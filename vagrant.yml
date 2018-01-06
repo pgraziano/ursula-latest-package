@@ -1,0 +1,33 @@
+default:
+  memory: 512
+  cpus: 1
+
+vms:
+  allinone:
+    ip_address:
+      - 172.16.0.100
+      - 172.16.255.100
+      - 192.168.255.100
+    cpus: 2
+    memory: 6144
+    custom:
+       - '["modifyvm", :id, "--nicpromisc3", "allow-all"]'
+       - '["modifyvm", :id, "--nicpromisc4", "allow-all"]'
+  controller1:
+    ip_address:
+      - 172.16.0.101
+      - 192.168.255.101
+    memory: 3072
+    custom: '["modifyvm", :id, "--nicpromisc3", "allow-all"]'
+  controller2:
+    ip_address:
+      - 172.16.0.102
+      - 192.168.255.102
+    memory: 3072
+    custom: '["modifyvm", :id, "--nicpromisc3", "allow-all"]'
+  compute1:
+    ip_address:
+      - 172.16.0.111
+      - 192.168.255.111
+    memory: 1536
+    custom: '["modifyvm", :id, "--nicpromisc3", "allow-all"]'

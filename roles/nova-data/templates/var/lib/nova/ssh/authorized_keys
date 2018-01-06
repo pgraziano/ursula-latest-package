@@ -1,0 +1,3 @@
+{% for host in groups['compute'] %}
+{{ hostvars[host].nova_user.ssh_public_key }}
+{% endfor %}

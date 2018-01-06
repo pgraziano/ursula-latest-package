@@ -1,0 +1,64 @@
+---
+- include: v7k_integration.yml
+  when: v7k.enabled
+
+- name: install cinder controller services (ubuntu)
+  upstart_service:
+    name: "{{ item.name }}"
+    user: "{{ item.user }}"
+    cmd: "{{ item.cmd }}"
+    envs: "{{ item.envs|default([]) }}"
+    config_dirs: "{{ item.config_dirs }}"
+  with_items:
+    - "{{ cinder.services.cinder_api }}"
+    - "{{ cinder.services.cinder_scheduler }}"
+  notify: restart cinder services
+  when: ursula_os == 'ubuntu'
+
+- name: install cinder controller services (rhel)
+  systemd_service:
+    name: "{{ item.name }}"
+    description: "{{ item.desc }}"
+    type: "{{ item.type }}"
+    user: "{{ item.user }}"
+    environments: "{{ item.environments|default([]) }}"
+    cmd: "{{ item.cmd }}"
+    config_files: "{{ item.config_files }}"
+    restart: "{{ item.restart }}"
+  with_items:
+    - "{{ cinder.services.cinder_api }}"
+    - "{{ cinder.services.cinder_scheduler }}"
+  notify: restart cinder services
+  when: ursula_os == 'rhel'
+
+- name: sync cinder database
+  command: cinder-manage db sync
+  when: database_create.changed or force_sync|default('false')|bool
+  run_once: true
+  changed_when: true
+  notify: restart cinder services
+  # we want this to always be changed so that it can notify the service restart
+  tags: db-migrate
+
+- name: trigger restart on upgrades
+  debug:
+    msg: "Triggering service restart for upgrade"
+  changed_when: True
+  notify: restart cinder services
+  tags: ['ceph', 'ceph-client']
+  when: (code_has_changed | default('False') | bool and upgrade | default('False') | bool) or
+        (ceph.enabled and cephclient_upgraded|default(false))
+
+- meta: flush_handlers
+
+- name: start cinder controller services
+  service: name={{ item.name }} state=started enabled=true
+  with_items:
+    - "{{ cinder.services.cinder_api }}"
+    - "{{ cinder.services.cinder_scheduler }}"
+
+- include: monitoring.yml
+  tags:
+    - monitoring
+    - common
+  when: monitoring.enabled|default('True')|bool

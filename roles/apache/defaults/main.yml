@@ -1,0 +1,40 @@
+---
+apache_log_path:
+  rhel: '/var/log/httpd'
+  ubuntu: '/var/log/apache2'
+apache:
+  package_name:
+    ubuntu: apache2
+    rhel: httpd
+  service_name:
+    ubuntu: apache2
+    rhel: httpd
+  modules:
+    ubuntu:
+      - libapache2-mod-wsgi
+      - libapache2-mod-uwsgi
+      - libapache2-mod-proxy-uwsgi
+    rhel:
+      - mod_wsgi
+      - mod_proxy_uwsgi
+  listen: []
+  logs:
+    - paths:
+        - "{{ apache_log_path[ursula_os] }}/access.log"
+      fields:
+        # type: <custom type defined in receiving Logstash>
+        tags: apache_access
+    - paths:
+        -  "{{ apache_log_path[ursula_os] }}/error.log"
+      fields:
+        # type: <custom type defined in receiving Logstash>
+        tags: apache_error
+  ssl:
+    settings: |
+      SSLEngine on
+      SSLProtocol All -SSLv2 -SSLv3
+      SSLHonorCipherOrder On
+      SSLCompression off
+      # Add six earth month HSTS header for all users...
+      Header always set Strict-Transport-Security "max-age=15768000"
+      SSLCipherSuite 'EDH+CAMELLIA:EDH+aRSA:EECDH+aRSA+AESGCM:EECDH+aRSA+SHA384:EECDH+aRSA+SHA256:EECDH:+CAMELLIA256:+AES256:+CAMELLIA128:+AES128:+SSLv3:!aNULL:!eNULL:!LOW:!3DES:!MD5:!EXP:!PSK:!DSS:!RC4:!SEED:!ECDSA:CAMELLIA256-SHA:AES256-SHA:CAMELLIA128-SHA:AES128-SHA'

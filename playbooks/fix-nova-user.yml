@@ -1,0 +1,32 @@
+---
+
+# some previous versions of ursula configured the nova user with no home directory
+# this is problematic, because nova expects a homedir containing ssh keys etc.
+# for vm migration/resize.
+
+- hosts: controller:db:compute
+  tasks:
+
+    - name: stop nova services
+      shell: ls /etc/init/{{ item }}.conf && service {{ item }} stop
+      failed_when: False
+      with_items:
+        - nova-api
+        - nova-consoleauth
+        - nova-novncproxy
+        - nova-scheduler
+        - nova-compute
+        - nova-conductor
+
+    - name: modify nova user to have a home dir
+      user: name=nova comment=nova shell=/bin/sh home=/var/lib/nova createhome=yes
+
+    - name: start nova services
+      service: name={{ item }} state=restarted must_exist=false
+      with_items:
+        - nova-api
+        - nova-consoleauth
+        - nova-novncproxy
+        - nova-scheduler
+        - nova-compute
+        - nova-conductor

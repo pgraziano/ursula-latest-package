@@ -1,0 +1,15 @@
+---
+# Precise requires a newer kernel in order to support docker.
+# See: http://docs.docker.io/installation/ubuntulinux/#ubuntu-precise-1204-lts-64-bit
+# This playbook only handles the upgrade of the kernel. The installation of Docker
+# happens in a standard Ursula run.
+- hosts: all:!vyatta-*
+  tasks:
+    - apt: pkg={{item}}
+      with_items:
+        - linux-image-generic-lts-raring
+        - linux-headers-generic-lts-raring
+
+- hosts: all:!vyatta-*
+  tasks:
+    - command: reboot

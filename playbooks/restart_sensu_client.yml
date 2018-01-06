@@ -1,0 +1,6 @@
+- name: restart sensu client
+  hosts: all
+  tasks:
+    - name: restart sensu client service
+      service: name=sensu-client state=restarted enabled=yes
+

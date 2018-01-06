@@ -1,0 +1,139 @@
+---
+- name: cleanup old configs
+  hosts: all:!vyatta-*
+  handlers:
+    - include: ../roles/cleanup/handlers/main.yml
+  tasks:
+    - name: stop logstash-forwarder service
+      service: name=logstash-forwarder state=stopped enabled=yes
+      register: lsfstop
+      failed_when: lsfstop|failed and ("service not found" not in lsfstop.msg)
+    - include: ../roles/cleanup/tasks/logging.yml
+
+- name: install or update logstash-forwarder
+  hosts: all:!vyatta-*
+  roles:
+    - ../roles/logging
+
+- name: keystone logging
+  hosts: controller
+  vars_files:
+    - ../roles/keystone-defaults/defaults/main.yml
+  roles:
+    - role: ../roles/logging-config
+      service: keystone
+      logdata: "{{ keystone.logs }}"
+  tasks:
+    - include: ../roles/keystone/tasks/logging.yml
+
+- name: glance logging
+  hosts: controller
+  vars_files:
+    - ../roles/glance/defaults/main.yml
+  roles:
+    - role: ../roles/logging-config
+      service: glance
+      logdata: "{{ glance.logs }}"
+  tasks:
+    - include: ../roles/glance/tasks/logging.yml
+
+- name: nova logging
+  hosts: controller:compute
+  vars_files:
+    - ../roles/nova-common/defaults/main.yml
+  roles:
+    - role: ../roles/logging-config
+      service: nova
+      logdata: "{{ nova.logs }}"
+  tasks:
+    - include: ../roles/nova-common/tasks/logging.yml
+
+- name: cinder logging
+  hosts: controller:compute
+  vars_files:
+    - ../roles/cinder-common/defaults/main.yml
+  roles:
+    - role: ../roles/logging-config
+      service: cinder
+      logdata: "{{ cinder.logs }}"
+  tasks:
+    - include: ../roles/cinder-common/tasks/logging.yml
+
+- name: neutron logging
+  hosts: network:compute
+  vars_files:
+    - ../roles/neutron-common/defaults/main.yml
+  roles:
+    - role: ../roles/logging-config
+      service: neutron
+      logdata: "{{ neutron.logs }}"
+  tasks:
+    - include: ../roles/neutron-common/tasks/logging.yml
+
+- name: horizon logging
+  hosts: controller
+  roles:
+  - role: ../roles/logging-config
+    service: horizon
+    logdata: "{{ horizon.logs }}"
+
+- name: ceph logging
+  hosts: ceph_monitors:ceph_osds
+  vars_files:
+    - ../roles/ceph-defaults/defaults/main.yml
+  roles:
+  - role: ../roles/logging-config
+    service: ceph
+    logdata: "{{ ceph.logs }}"
+  tasks:
+    - include: ../roles/ceph-config/tasks/logging.yml
+
+- name: swift logging
+  hosts: swiftnode
+  vars_files:
+    - ../roles/swift-common/defaults/main.yml
+  roles:
+  - role: ../roles/logging-config
+    service: swift
+    logdata: "{{ swift.logs }}"
+  tasks:
+    - include: ../roles/swift-common/tasks/logging.yml
+
+- name: ironic logging
+  hosts: controller
+  vars_files:
+    - ../roles/ironic-common/defaults/main.yml
+  roles:
+  - role: ../roles/logging-config
+    service: ironic
+    logdata: "{{ ironic.logs }}"
+  tasks:
+    - include: ../roles/ironic-common/tasks/logging.yml
+
+- name: heat logging
+  hosts: controller
+  vars_files:
+    - ../roles/heat/defaults/main.yml
+  roles:
+  - role: ../roles/logging-config
+    service: heat
+    logdata: "{{ heat.logs }}"
+  tasks:
+    - include: ../roles/heat/tasks/logging.yml
+
+- name: barbican logging
+  hosts: controller
+  vars_files:
+    - ../roles/barbican/defaults/main.yml
+  roles:
+  - role: ../roles/logging-config
+    service: barbican
+    logdata: "{{ barbican.logs }}"
+  tasks:
+    - include: ../roles/barbican/tasks/logging.yml
+
+- name: start and check logstash-forwarder is running
+  hosts: all:!vyatta-*
+  tasks:
+    - name: start and enable logstash-forwarder service
+      service: name=logstash-forwarder state=started enabled=yes

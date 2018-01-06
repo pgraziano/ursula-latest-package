@@ -1,0 +1,87 @@
+---
+- name: install mongodb packages (ubuntu)
+  apt: pkg={{ item }} state=installed
+  with_items:
+    - mongodb-org-server={{ mongodb.version }}
+    - mongodb-org-shell={{ mongodb.version }}
+  register: result
+  until: result|succeeded
+  retries: 5
+  when: ursula_os == 'ubuntu'
+
+- name: install mongodb packages (centos)
+  yum: pkg={{ item }} state=installed
+  with_items:
+    - mongodb-server
+    - mongodb
+  register: result
+  until: result|succeeded
+  retries: 5
+  when:
+    - ursula_os == 'rhel'
+    - openstack_install_method == 'source'
+
+- name: install mongodb packages (rhel osp)
+  yum: disablerepo=epel pkg={{ item }} state=installed
+  with_items:
+    - mongodb-server
+    - mongodb
+  register: result
+  until: result|succeeded
+  retries: 5
+  when:
+    - ursula_os == 'rhel'
+    - openstack_install_method == 'distro'
+
+- name: Create keyFile
+  copy:
+    dest: "{{ mongodb.keyFile }}"
+    content: "{{ mongodb.keyfile_content }}"
+    owner: mongodb
+    group: mongodb
+    mode: 0600
+  notify: restart mongodb service
+  no_log: true
+
+- name: install mongodb config files
+  template: src=etc/mongodb/mongod.conf
+            dest=/etc/mongod.conf
+            owner=root
+            group=mongodb
+            mode=0640
+  notify: restart mongodb service
+
+- meta: flush_handlers
+
+- name: start mongodb service
+  service: name=mongod state=started enabled=True
+
+- name: Change files in  /var/lib/mongodb folder to group mongodb
+  file:
+    path: "/var/lib/mongodb"
+    group: mongodb
+    recurse: yes
+
+- name: Change permissions of /var/lib/mongodb folder
+  file:
+    path: "/var/lib/mongodb"
+    state: directory
+    group: root
+    mode: 0750
+
+- name: install pymongo for mongodb_user module
+  pip: name=pymongo state=present
+  register: result
+  until: result|succeeded
+  retries: 5
+
+- include: monitoring.yml
+  tags:
+    - monitoring
+    - common
+  when: monitoring.enabled|default('True')|bool
+
+- include: logging.yml
+  tags:
+    - logrotate
+    - logging

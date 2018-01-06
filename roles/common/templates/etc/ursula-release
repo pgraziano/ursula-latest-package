@@ -1,0 +1,6 @@
+---
+ursula:
+  stack: {{ stack_env }}
+  release: {{ ursula_revision }}
+  deployed: {{ ansible_date_time['iso8601'] }}
+  groups: {{ group_names | join(', ') }}

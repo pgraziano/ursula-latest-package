@@ -1,0 +1,55 @@
+---
+- name: create ceilometer user
+  user: name=ceilometer comment=ceilometer shell=/bin/false system=yes home=/nonexistent
+        createhome=no
+
+- name: create ceilometer environment.d directory
+  file: dest=/etc/ceilometer/environment.d state=directory
+
+- name: create ceilometer log directory
+  file: dest=/var/log/ceilometer state=directory mode=0755 owner=ceilometer
+
+- name: create ceilometer cache dir
+  file: dest=/var/cache/ceilometer state=directory mode=0700
+        owner=ceilometer group=ceilometer
+
+- name: ceilometer config
+  template: src=etc/ceilometer/{{ item }} dest=/etc/ceilometer/{{ item }} mode=0640 owner=root group=ceilometer
+  with_items:
+    - ceilometer.conf
+    - policy.json
+    - api_paste.ini
+    - event_definitions.yaml
+    - event_pipeline.yaml
+    - pipeline.yaml
+    - ceilometer_api_audit_map.conf
+  notify: restart ceilometer services
+
+- name: copy policy files to openstack-dashboard
+  template:
+    src: "etc/ceilometer/policy.json"
+    dest: "/etc/openstack-dashboard/ceilometer_policy.json"
+    owner: "root"
+    group: "{{ openstack_meta.apache[ursula_os].group }}"
+    mode: 0640
+  when: inventory_hostname in groups['controller']
+
+- name: check if snmpd.conf exists
+  stat: path=/etc/snmp/snmpd.conf
+  register: snmpd_conf
+
+- name: remove v1,v2,etc from snmpd config file
+  lineinfile:
+    dest: /etc/snmp/snmpd.conf
+    regexp: "^{{ item }}"
+    line: "# {{ item }}"
+  with_items:
+    - "com2sec notConfigUser  default       public"
+    - "group   notConfigGroup v1           notConfigUser"
+    - "group   notConfigGroup v2c           notConfigUser"
+  when: snmpd_conf.stat.exists
+
+- include: logging.yml
+  tags:
+    - logrotate
+    - logging

@@ -1,0 +1,1 @@
+{{ keystone.federation.sp.saml.providers[0].metadata_file_content }}

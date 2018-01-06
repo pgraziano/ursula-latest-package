@@ -1,0 +1,102 @@
+---
+- name: remove retired nova process checks
+  sensu_process_check:
+    service: "{{ item }}"
+    state: absent
+  with_items:
+    - nova-cert
+  notify: restart sensu-client
+
+- name: nova process checks
+  sensu_process_check: service={{ item }}
+  with_items:
+    - nova-conductor
+    - nova-consoleauth
+    - nova-scheduler
+  notify: restart sensu-client
+
+- name: nova-api process checks
+  sensu_process_check: service=nova-api warn_over=20 crit_over=30
+  notify: restart sensu-client
+
+- name: nova-placement-api process check
+  sensu_check:
+    name: nova_placement_process
+    plugin: check-procs.rb
+    args: "-p 'uwsgi.*placement' -w 5 -c 10 -W 1 -C 1"
+  notify: restart sensu-client
+
+- name: nova-api check
+  sensu_check: name=check-nova-api plugin=check-os-api.rb
+               args="--service nova --criticality {{ nova.monitoring.sensu_checks.check_nova_api.criticality }}"
+               only_on_ip="{{ undercloud_floating_ip | default(floating_ip) }}"
+  notify: restart sensu-client
+
+- name: check nova services
+  sensu_check_dict:
+    name: "check-nova-services"
+    check: "{{ sensu_checks.nova.check_nova_services }}"
+    only_on_ip: "{{ undercloud_floating_ip | default(floating_ip) }}"
+  notify: restart sensu-client missing ok
+
+- name: nova metrics check
+  sensu_metrics_check: name=nova-metrics plugin=metrics-nova.py
+                       args='--scheme {{ monitoring.graphite.cluster_prefix }}.nova.hypervisor'
+                       interval=3600
+                       only_on_ip="{{ undercloud_floating_ip | default(floating_ip) }}"
+  notify: restart sensu-client
+
+- name: nova state metrics check
+  sensu_metrics_check: name=nova-state-metrics plugin=metrics-nova-state.py
+                       args='--scheme {{ monitoring.graphite.cluster_prefix }}.nova.states'
+                       interval=3600
+                       only_on_ip="{{ undercloud_floating_ip | default(floating_ip) }}"
+  notify: restart sensu-client
+
+- name: nova oversubscribe metrics check
+  sensu_metrics_check: name=nova-oversubscribe-metrics plugin=metrics-nova-oversub.sh
+                       args='-s {{ monitoring.graphite.cluster_prefix }}.nova.oversubscription'
+                       interval=3600
+                       use_sudo=true
+                       only_on_ip="{{ undercloud_floating_ip | default(floating_ip) }}"
+  notify: restart sensu-client
+
+- name: nova metrics
+  template: src=etc/collectd/plugins/nova.conf dest=/etc/collectd/plugins/nova.conf
+  notify: restart collectd
+  when: collectd is defined and collectd.enabled|bool
+  tags: collectd
+
+- name: nova sla metrics
+  sensu_metrics_check: name=nova-sla-metrics plugin=metrics-os-api.py
+                       args='-S nova --scheme {{ monitoring.graphite.cluster_prefix }}'
+                       only_on_ip="{{ undercloud_floating_ip | default(floating_ip) }}"
+  notify: restart sensu-client
+
+- name: service-list sla metrics
+  sensu_metrics_check: name=service-list-sla-metrics plugin=metrics-os-api.py
+                       args='-S service-list --scheme {{ monitoring.graphite.cluster_prefix }} -f {{ fqdn }}'
+                       only_on_ip="{{ undercloud_floating_ip | default(floating_ip) }}"
+  notify: restart sensu-client
+
+- name: nova quotas metrics
+  sensu_metrics_check:
+    name: compute-quotas-metrics
+    plugin: metrics-nova-project-quotas.py
+    state: absent
+  notify: restart sensu-client
+
+- name: nova usage metrics
+  sensu_metrics_check:
+    name: compute-usage-metrics
+    plugin: metrics-nova-project-usage.py
+    state: absent
+  notify: restart sensu-client
+
+- name: nova limit metrics (quota/usage)
+  sensu_metrics_check:
+    name: compute-limit-metrics
+    plugin: metrics-openstack-project-limits.py
+    args: '-S nova --scheme {{ monitoring.graphite.cluster_prefix }}'
+    only_on_ip: "{{ undercloud_floating_ip | default(floating_ip) }}"
+  notify: restart sensu-client

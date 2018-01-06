@@ -1,0 +1,76 @@
+---
+- hosts: compute:network
+  tasks:
+  - name: Check stack is configured for ML2
+    fail: msg="Stack not configured for ML2, please update group_vars/all.yml"
+    when: neutron.plugin != 'ml2'
+
+  - name: Stop neutron-linuxbridge-agent
+    service: name=neutron-linuxbridge-agent state=stopped
+
+  - name: Disconnect any VLAN interfaces from Neutron bridges to prevent creating network loop
+    shell: ip -d link show | perl -ne 'system("brctl", "delif", $2, $1) if /^\d+. (eth\d+\.\d+).*master (brq[0-9a-f]{8}-[0-9a-f]{2})/'
+
+- hosts: network
+  tasks:
+  - name: Stop Neutron data plane services
+    service: name={{ item }} state=stopped
+    with_items:
+      - neutron-dhcp-agent
+      - neutron-l3-agent
+
+- hosts: controller
+  tasks:
+  - name: Stop Neutron server so we can modify its database
+    service: name=neutron-server state=stopped
+
+- hosts: controller[0]
+  tasks:
+  - name: Backup Neutron Database
+    command: mysqldump --result-file=/opt/stack/neutron-pre-ml2-vxlan-migration.sql neutron
+
+  - name: Convert VLAN networks to VXLAN
+    command: mysql neutron -e "
+             UPDATE ml2_network_segments SET network_type='vxlan', physical_network=NULL WHERE network_type='vlan';
+             UPDATE ml2_vxlan_allocations SET allocated=1 WHERE vxlan_vni IN (SELECT segmentation_id FROM ml2_network_segments WHERE network_type='vxlan');
+             UPDATE ml2_vlan_allocations SET allocated=0 WHERE vlan_id IN (SELECT segmentation_id FROM ml2_network_segments WHERE network_type='vxlan'); "
+
+- hosts: compute:network:controller
+  vars_files:
+    - ../roles/rabbitmq/defaults/main.yml
+    - ../roles/nova-common/defaults/main.yml
+    - ../roles/neutron-common/defaults/main.yml
+  tasks:
+  # Configuration files from neutron-common role
+  - name: Update Neutron config
+    template: src=../roles/neutron-common/templates/etc/neutron/{{ item }}
+              dest=/etc/neutron/{{ item }}
+              mode=0644
+    with_items:
+      - neutron.conf
+      - dhcp_agent.ini
+      - metadata_agent.ini
+      - api-paste.ini
+      - l3_agent.ini
+      - rootwrap.conf
+      - policy.json
+      - plugins/ml2/ml2_plugin.ini
+
+- hosts: controller
+  serial: 1
+  tasks:
+  - name: Start Neutron server
+    service: name=neutron-server state=started
+
+- hosts: compute:network
+  tasks:
+  - name: Start neutron-linuxbridge-agent
+    service: name=neutron-linuxbridge-agent state=started
+
+- hosts: network
+  tasks:
+  - name: Start Neutron data plane services
+    service: name={{ item }} state=started
+    with_items:
+      - neutron-dhcp-agent
+      - neutron-l3-agent

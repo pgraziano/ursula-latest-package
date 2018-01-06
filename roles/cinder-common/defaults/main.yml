@@ -1,0 +1,111 @@
+---
+project_name: cinder
+cinder:
+  services:
+    cinder_api: "{{ openstack_meta.cinder.services.cinder_api[ursula_os] }}"
+    cinder_scheduler: "{{ openstack_meta.cinder.services.cinder_scheduler[ursula_os] }}"
+    cinder_volume: "{{ openstack_meta.cinder.services.cinder_volume[ursula_os] }}"
+    cinder_backup: "{{ openstack_meta.cinder.services.cinder_backup[ursula_os] }}"
+  enabled: True
+  enabled_backends: [] # determined automatically by Ceph roles
+  default_backend:
+  backends: []
+  # determined automatically by Ceph roles
+
+  # backend   ->      available volume_type
+  # lvm       ->      LVM
+  # ceph      ->      CEPH_SSD, CEPH_HYBRID
+  # if we don't define default_volume_type, ursula will choose one by itself
+  #default_volume_type: xx # xx is one of ['LVM', 'CEPH_SSD', 'CEPH_HYBRID']
+  api_workers: 5
+  state_path: "{{ state_path_base }}/cinder"
+  volume_type: file
+  volume_group: cinder-volumes
+  create_vg: False
+  common_volume_name: True
+  allow_availability_zone_fallback: True
+  data_pkgs:
+    ubuntu:
+      - cryptsetup
+      - lvm2
+      - tgt
+      - nbd-client
+      - open-iscsi
+      - qemu-utils
+    #FIXME do we need these pkgs on rhel?
+    rhel:
+      - cryptsetup
+      - lvm2
+      - nbd
+      - scsi-target-utils
+      - qemu-kvm-tools
+  tgt_service:
+    ubuntu: tgt
+    rhel: tgtd
+  iscsi_service:
+    ubuntu: open-iscsi
+    rhel: iscsid
+  alternatives:
+      - cinder-all
+      - cinder-api
+      - cinder-backup
+      - cinder-manage
+      - cinder-rootwrap
+      - cinder-rtstool
+      - cinder-scheduler
+      - cinder-volume
+      - cinder-volume-usage-audit
+  heartbeat_timeout_threshold: 30
+  distro:
+    project_packages:
+      - openstack-selinux
+      - openstack-cinder
+  source:
+    rev: newton-eol
+    upper_constraints: '{{ openstack_meta.upper_constraints }}'
+    python_dependencies:
+      - { name: PyMySQL }
+      - { name: python-memcached }
+    system_dependencies:
+      ubuntu: []
+      rhel: []
+  logs:
+  - paths:
+      - /var/log/cinder/cinder-api.log
+    fields:
+      type: openstack
+      tags: cinder,cinder-api
+  - paths:
+      - /var/log/cinder/cinder-manage.log
+    fields:
+      type: openstack
+      tags: cinder,cinder-manage
+  - paths:
+      - /var/log/cinder/cinder-scheduler.log
+    fields:
+      type: openstack
+      tags: cinder,cinder-scheduler
+  - paths:
+      - /var/log/cinder/cinder-volume.log
+    fields:
+      type: openstack
+      tags: cinder,cinder-volume
+  - paths:
+      - /var/log/upstart/tgt.log
+    fields:
+      type: openstack
+      tags: cinder,tgt
+  logging:
+    debug: False
+    verbose: True
+  cafile: "{{ ssl.cafile }}"
+  monitoring:
+    sensu_checks:
+      check_cinder_services:
+        criticality: 'critical'
+  auditing:
+    enabled: False
+    logging: False
+  encryption:
+    enabled: False
+    fixed_key: ~

@@ -1,0 +1,28 @@
+---
+dependencies:
+  - role: endpoints
+  - role: apt-repos
+    repos:
+      - repo: 'deb {{ apt_repos.hwraid.repo }} {{ ansible_lsb.codename }} main'
+        key_url: '{{ apt_repos.hwraid.key_url }}'
+    when: common.hwraid.enabled|bool and ursula_os == 'ubuntu'
+  - role: apt-repos
+    repos:
+      - repo: 'deb {{ apt_repos.sensu.repo }} {{ apt_repos.sensu.distribution }} {{ apt_repos.sensu.components }}'
+        key_url: '{{ apt_repos.sensu.key_url }}'
+    when: monitoring.enabled|default(True)|bool and ursula_os == 'ubuntu'
+  - role: repos
+    repo: sensu
+    when: monitoring.enabled|default(True)|bool and ursula_os == 'rhel'
+  - role: repos
+    repo: epel
+    when: ursula_os == 'rhel'
+  - role: docker
+    when: docker.enabled is defined and docker.enabled|bool
+  - role: monitoring-common
+    when: monitoring.enabled|default(True)|bool
+  - role: sensu-check
+  - role: logging-config
+    when: logging.enabled|default(True)|bool
+    service: common
+    logdata: "{{ common.logs }}"

@@ -1,0 +1,31 @@
+---
+- name: run node_internet_connectivity.yml
+  debug:
+    msg: Running node_internet_connectivity.yml playbook
+
+# Single IP address tests
+- name: instance internet connectivity test w/ floating-ip (ping)
+  command: "ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no
+           -o IdentityFile={{ temp_key_dest }}
+           cirros@{{ ip_addr }}
+           ping -c 5 google.com"
+  become: no
+  changed_when: false
+  register: pings
+  until: pings|success
+  delay: 1
+  retries: 5
+  delegate_to: localhost
+
+- name: instace internet connectivity w/ floating ip (curl)
+  command: "ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no
+           -o IdentityFile={{ temp_key_dest }}
+           cirros@{{ ip_addr }}
+           curl -IL --fail --connect-timeout 10 http://google.com"
+  become: no
+  changed_when: false
+  register: curl
+  until: curl|success
+  delay: 1
+  retries: 5
+  delegate_to: localhost

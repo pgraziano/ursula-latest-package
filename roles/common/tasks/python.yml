@@ -1,0 +1,136 @@
+---
+- name: python dependencies
+  package:
+    name: "{{ item }}"
+  with_items: " {{ common.python[ursula_os].system_packages }}"
+  register: result
+  until: result|succeeded
+  retries: 5
+
+- name: base venv directory
+  file: dest="{{ common.python.base_venv }}"
+        state=directory mode=0755
+
+- name: set pip proxy args
+  set_fact:
+    pip_extra_args: " -i {{ openstack.pypi_mirror }}"
+  when: openstack.pypi_mirror is defined
+
+- name: update pip (ubuntu trusty)
+  pip: name=pip version={{ common.pip_version }}
+       extra_args="-i {{ openstack.pypi_mirror }}"
+  when:
+    - ansible_distribution == "Ubuntu"
+    - ansible_distribution_version == "12.04"
+    - openstack.pypi_mirror is defined
+  register: result
+  until: result|succeeded
+  retries: 5
+
+- name: update pip (ubuntu)
+  pip: name=pip version={{ common.pip_version }}
+       extra_args="-i {{ openstack.pypi_mirror }}"
+  when: ansible_distribution_version != "12.04" and ursula_os == "ubuntu"
+  register: result
+  until: result|succeeded
+  retries: 5
+
+- name: root user pip config directory
+  file: dest=/root/.pip state=directory
+
+- name: pip config file
+  template: src=etc/pip.conf dest=/root/.pip/pip.conf
+  when: openstack.pypi_mirror is defined
+
+- name: easyinstall config file
+  template: src=etc/pydistutils.cfg dest=/root/.pydistutils.cfg
+  when: openstack.easy_install_mirror is defined
+
+- name: update pip (base venv)
+  pip: name=pip version={{ common.pip_version }}
+       extra_args="{{ pip_extra_args }}"
+       virtualenv="{{ common.python.base_venv }}"
+  register: result
+  until: result|succeeded
+  retries: 5
+
+- name: upgrade setuptools for base venv
+  pip:
+    name: "setuptools"
+    virtualenv: "{{ common.python.base_venv }}"
+    extra_args: "{{ pip_extra_args }} --upgrade"
+  register: result
+  until: result|succeeded
+  retries: 5
+
+- name: python packages for base venv
+  pip:
+    name: "{{ item }}"
+    virtualenv: "{{ common.python.base_venv }}"
+    extra_args: "{{ pip_extra_args }}"
+  with_items: "{{ common.python[ursula_os].extra_packages }}"
+  register: result
+  until: result|succeeded
+  retries: 5
+
+- name: install shade bits for ansible modules in base venv
+  pip:
+    name: "{{ item }}"
+    virtualenv: "{{ common.python.base_venv }}"
+    extra_args: "{{ pip_extra_args }}"
+  with_items:
+    - "{{ common.python.shade_version }}"
+  register: result
+  until: result|succeeded
+  retries: 5
+
+- block:
+  - name: uninstall python-setuptools
+    package: name=python-setuptools state=absent
+    when: common.setuptools_version != "system"
+    register: result
+    until: result|succeeded
+    retries: 5
+
+  - name: install pip setuptools
+    pip: name=setuptools version={{ common.setuptools_version }}
+    when: common.setuptools_version != "system"
+    register: result
+    until: result|succeeded
+    retries: 5
+
+  - name: install python extra packages
+    pip:
+      name: "{{ item }}"
+    with_items: "{{ common.python[ursula_os].extra_packages }}"
+    register: result
+    until: result|succeeded
+    retries: 5
+
+  - name: pin alembic to 0.7.0
+    pip: name=alembic version=0.7.0
+    register: result
+    until: result|succeeded
+    retries: 5
+
+  # We are not using install extra python pkgs from git approach anywhere
+  # - name: install additional python packages
+  #   git: repo={{ item.repo }} dest=/opt/stack/{{ item.name }}
+  #        version={{ item.rev }} accept_hostkey=True
+  #   with_items: "{{ common.python[ursula_os].extra_packages }}"
+  #
+  # - name: install drivers
+  #   command: python setup.py install chdir=/opt/stack/{{ item.name }}
+  #   with_items: "{{ common.python[ursula_os].extra_packages }}"
+
+  - name: pip install python-dateutil
+    pip: name=python-dateutil
+    register: result
+    until: result|succeeded
+    retries: 5
+
+  - name: pip install eventlet
+    pip: name=eventlet
+    register: result
+    until: result|succeeded
+    retries: 5

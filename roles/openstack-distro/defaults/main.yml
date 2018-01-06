@@ -1,0 +1,5 @@
+openstack_distro:
+  project_packages: "{{ project_packages|default([]) }}"
+  dependent_packages: "{{ dependent_packages|default([]) }}"
+  python_post_dependencies: "{{ python_post_dependencies|default([]) }}"
+  pip_extra_args: ""

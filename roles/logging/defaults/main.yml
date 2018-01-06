@@ -1,0 +1,87 @@
+logging:
+  version: 0.3.1
+  install_method: file
+  download:
+    ubuntu:
+      url: https://file-mirror.openstack.blueboxgrid.com/logstash/logstash-forwarder_0.3.1_amd64.deb
+    rhel:
+      url: https://download.elastic.co/logstash-forwarder/binaries/logstash-forwarder-0.4.0-1.x86_64.rpm
+  follow:
+    enabled: true
+    global_fields:
+      customer_id: "unknown"
+      cluster_name: "unknown"
+    logs:
+      - paths:
+          - "{{ ( ursula_os == 'ubuntu' )| ternary('/var/log/syslog', '/var/log/messages') }}"
+        fields:
+          type: syslog
+  syslog_forwarding:
+    enabled: false
+    # selector is a list of facilities and their priorities
+    selector: auth,authpriv.*,local6.*
+    work_directory: /var/spool/rsyslog
+    config_vars:
+      - name: ActionResumeRetryCount
+        value: -1
+      - name: ActionResumeInterval
+        value: 10
+      - name: ActionQueueType
+        value: LinkedList
+      - name: ActionQueueFileName
+        value: auth_authpriv_audit_0
+      - name: ActionQueueMaxDiskSpace
+        value: 1m
+      - name: ActionQueueLowWaterMark
+        value: 500
+      - name: ActionQueueHighWaterMark
+        value: 10000
+      - name: ActionQueueTimeoutEnqueue
+        value: 0
+      - name: ActionQueueSaveOnShutdown
+        value: on
+      - name: ActionQueueSize
+        value: 10000
+      - name: ActionQueueDiscardMark
+        value: 9750
+      - name: ActionQueueDiscardSeverity
+        value: 8
+      - name: ActionQueueCheckpointInterval
+        value: 100
+    host: null
+    port: 514
+  forward_type: "filebeat"
+  forward:
+    enabled: true
+    version: 1.3.1
+    port: 4561
+    config_dir: /etc/filebeat/filebeat.d
+    host: null
+    tls:
+      enabled: true
+      ca_cert: |
+        Blue Box Group CA certificate
+        Replace this with your root CA or server cert
+        -----BEGIN CERTIFICATE-----
+        MIIDyTCCArGgAwIBAgIBATANBgkqhkiG9w0BAQUFADBuMQswCQYDVQQGEwJVUzEL
+        MAkGA1UECBMCV0ExFzAVBgNVBAoTDkJsdWUgQm94IEdyb3VwMRUwEwYDVQQDHgwA
+        QgBCAEcAXwBDAEExIjAgBgkqhkiG9w0BCQEWE3N1cHBvcnRAYmx1ZWJveC5uZXQw
+        HhcNMTExMTIwMDY1MzMwWhcNMjExMTE3MDY1MzMwWjBuMQswCQYDVQQGEwJVUzEL
+        MAkGA1UECBMCV0ExFzAVBgNVBAoTDkJsdWUgQm94IEdyb3VwMRUwEwYDVQQDHgwA
+        QgBCAEcAXwBDAEExIjAgBgkqhkiG9w0BCQEWE3N1cHBvcnRAYmx1ZWJveC5uZXQw
+        ggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQDD7uBuu4oAhxRWrCIvO8+i
+        EMYyv54BIEPBRlPyoHP0wfcKbr7m2EpDCfI3NKff3nw66I/aYS9lopc+Ogy5Vqo5
+        fWILRN+cnVMq3BwMkJ4L6AakU+fi2f+qnu3kdDatR2raV/Ss2U5jj1NEulXozYdn
+        zY4WJ9havWDvo6MOegsD16gARA2b4zmmCA/gJaCc2rtYDoS8cA9aWB3lOEDx+PxN
+        CVQ3alVjVEfpiyCrejvUYz+k+8iN2KKJ+UbPzy8Ujy5DsyGoMLNU6k8IMlJ2Kp5m
+        mkNsSQFrdufwAp2BtISjcphi0hVuKYqFv0oBN6d+L7RRVpXn3yLDUnIQKz20+cjh
+        AgMBAAGjcjBwMA8GA1UdEwEB/wQFMAMBAf8wHQYDVR0OBBYEFG7q+CpUNLrbTUCA
+        Rk35yGiI8VBLMAsGA1UdDwQEAwIBBjARBglghkgBhvhCAQEEBAMCAAcwHgYJYIZI
+        AYb4QgENBBEWD3hjYSBjZXJ0aWZpY2F0ZTANBgkqhkiG9w0BAQUFAAOCAQEAqx+e
+        bQBDp2sXgcb4Scbsq7J8MjOaVaHzpJkUNhOpEX/6h9VPVpDXtjk1/TrLAsbRat1D
+        PwfFb1VBV+RkOtZ6CJwODSfLDFk6CvnPLAm0UmqOXGs5qg9BO90/6MtP0q7reOeR
+        CxLdEV/DMCXKDy3r3/epbomlKMGsvslhgF6PAW7nJwrEVTbSTeKGgaGQMKcK8UpE
+        fyb9ndBKwpWb3DqMEDXlfPvzDXmpcnf/32TA1PnRNbZwzJvKMwpidso4dMlhaEmb
+        SwV0UP8aZzBr+n5JmHq61JV0Vy0C61HF2ZDsZNf62d6cfuq4TiMK/FRm6eEw3Ziq
+        s3KGTb+wEuHlErtX1Q==
+        -----END CERTIFICATE-----

@@ -1,0 +1,6 @@
+{% if openstack_install_method != 'distro' %}
+ironic ALL=(root) NOPASSWD: /usr/local/bin/ironic-rootwrap
+{% else %}
+ironic ALL=(root) NOPASSWD: /bin/ironic-rootwrap
+{% endif %}
+

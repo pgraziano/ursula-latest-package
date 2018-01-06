@@ -1,0 +1,338 @@
+---
+- name: create monitoring group
+  group: name=monitor state=present
+
+- name: install sensu
+  package: name=sensu
+  register: result
+  until: result|succeeded
+  retries: 5
+
+- name: install perl which module - ubuntu
+  package: name=libfile-which-perl
+  when: ursula_os == 'ubuntu'
+  register: result
+  until: result|succeeded
+  retries: 5
+
+- name: install perl which module - ubuntu
+  package: name=perl-File-Which
+  when: ursula_os == 'rhel'
+  register: result
+  until: result|succeeded
+  retries: 5
+
+- name: sensu sudoers
+  template: src=monitoring/sensu-sudoers dest=/etc/sudoers.d/sensu owner=root
+            group=root mode=0440
+
+- name: add sensu to monitoring group
+  user: name=sensu groups=monitor append=yes
+
+- name: ensure /etc/sudoers.d/sensu permissions are 0440
+  file: path=/etc/sudoers.d/sensu mode=0440
+
+- name: sensu gems directory
+  file: dest=/opt/sensu/gems state=directory owner=sensu mode=0750
+
+- name: sensu cert directory
+  file: dest=/etc/sensu/ssl state=directory owner=sensu mode=0750
+
+- name: install sensu cert
+  template: dest=/etc/sensu/ssl/cert.pem src=monitoring/sensu-client-cert.pem
+            owner=root group=sensu mode=0640
+  notify: restart sensu-client
+  when: monitoring.client_cert is defined
+
+- name: install sensu key
+  template: dest=/etc/sensu/ssl/key.pem src=monitoring/sensu-client-key.pem
+            owner=root group=sensu mode=0640
+  notify: restart sensu-client
+  when: monitoring.client_key is defined
+
+- name: install dependancy gems
+  shell: /opt/sensu/embedded/bin/gem install {{ item }} --no-user-install
+  with_items: "{{ monitoring.checks.gems }}"
+
+- name: use embedded ruby
+  lineinfile: dest=/etc/default/sensu regexp=^EMBEDDED_RUBY
+              line=EMBEDDED_RUBY=true
+  notify: restart sensu-client
+
+- name: ensure PATH contains /usr/local/bin (OpenStack clients)
+  lineinfile: dest=/etc/default/sensu regexp=^PATH
+              line="PATH=/opt/sensu/embedded/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/etc/sensu/plugins"
+  notify: restart sensu-client
+
+- name: ensure sensu client use base_venv python
+  lineinfile: dest=/etc/default/sensu regexp="^\. {{ common.python.base_venv }}/bin/activate"
+              line=". {{ common.python.base_venv }}/bin/activate"
+  notify: restart sensu-client
+
+- name: ensure sensu-client path enabled on redhat
+  template:
+    dest: /etc/sysconfig/sensu-client
+    src: monitoring/sensu-client-path
+    owner: root
+    group: root
+    mode: 0644
+  notify: restart sensu-client
+  when: ursula_os == "rhel"
+
+- name: sensu client config
+  template: src=monitoring/config.json dest=/etc/sensu/config.json owner=root
+            group=root
+            mode=0444
+  notify: restart sensu-client
+
+- name: sensu monitoring credentials
+  template: dest=/etc/sensu/stackrc src=etc/sensu/stackrc
+            owner=root group=sensu mode=0640
+  when: monitoring.openstack.user is defined
+
+- name: load monitoring credentials
+  lineinfile: dest=/etc/default/sensu regexp="^\. /etc/sensu/stackrc"
+              line=". /etc/sensu/stackrc"
+  notify: restart sensu-client
+  when: monitoring.openstack.user is defined
+
+- name: enable and start sensu-client
+  service: name=sensu-client state=started enabled=yes
+
+- name: override sensu-client startup
+  shell: update-rc.d sensu-client defaults
+  when: ursula_os == 'ubuntu'
+
+- name: install sensu plugin pip modules
+  pip: name=sensu_plugin version=0.1.0
+  register: result
+  until: result|succeeded
+  retries: 5
+
+- name: sensu conf dir
+  file: dest=/etc/sensu/conf.d/checks state=directory owner=root mode=0755
+
+- name: create ursula_monitoring dir
+  file: dest="{{ common.ursula_monitoring.path }}"
+        state=directory mode=0755
+
+- name: fetch ursula_monitoring when install method is git
+  git: repo="{{ common.ursula_monitoring.git_repo }}"
+       dest="{{ common.ursula_monitoring.path }}"
+       version="{{ common.ursula_monitoring.git_rev }}"
+       update=yes
+       force=yes
+  when: common.ursula_monitoring.method == 'git'
+
+- name: ursula_monitoring directories
+  file: dest={{ item }} mode=0755 state=directory
+  with_items:
+    - "{{ common.ursula_monitoring.path }}/archive"
+  when: common.ursula_monitoring.method == 'tar'
+
+- name: fetch ursula_monitoring when install method is tar
+  get_url: url="{{ common.ursula_monitoring.tar_url }}"
+           dest="{{ common.ursula_monitoring.path }}/archive/ursula-monitoring-{{ common.ursula_monitoring.tar_version  }}"
+           mode=0644
+  when: common.ursula_monitoring.method == 'tar'
+
+- name: untar ursula_monitoring package
+  unarchive: src="{{ common.ursula_monitoring.path }}/archive/ursula-monitoring-{{ common.ursula_monitoring.tar_version  }}"
+             dest="{{ common.ursula_monitoring.path }}" copy=no
+  when: common.ursula_monitoring.method == 'tar'
+
+- name: ursula monitoring current symlink
+  file: src="{{ common.ursula_monitoring.path }}/ursula-monitoring-{{ common.ursula_monitoring.tar_version }}"
+        dest="{{ common.ursula_monitoring.path }}/current" state=link force=true
+  when: common.ursula_monitoring.method == 'tar'
+
+- name: check existing sensu plugins dir
+  stat: path=/etc/sensu/plugins
+  register: sensu_plugins_dir
+
+- name: remove sensu plugins dir if it exists
+  file: dest=/etc/sensu/plugins state=absent
+  when: sensu_plugins_dir.stat.isdir is defined and sensu_plugins_dir.stat.isdir
+  notify: restart sensu-client
+
+- name: sensu plugins dir
+  file: src="{{ common.ursula_monitoring.path }}/sensu/plugins" dest=/etc/sensu/plugins state=link force=true
+  when: common.ursula_monitoring.method == 'git'
+
+- name: sensu plugins dir
+  file: src="{{ common.ursula_monitoring.path }}/ursula-monitoring-{{ common.ursula_monitoring.tar_version }}/sensu/plugins"
+        dest=/etc/sensu/plugins state=link force=true
+  when: common.ursula_monitoring.method == 'tar'
+
+- name: remove unwanted sensu plugins
+  file: dest=/etc/sensu/plugins/{{ item }} state=absent
+  with_items:
+    - check-neutron-fip.sh
+
+- name: cpu check
+  sensu_check: name=cpu plugin=check-cpu.rb args='-w {{ monitoring.checks.cpu.warning }} -c {{ monitoring.checks.cpu.critical }} -p kvm'
+  notify: restart sensu-client
+
+- name: network interface traffic check
+  sensu_check_dict:
+    name: network_interface_traffic
+    check: "{{sensu_checks.common.network_interface_traffic}}"
+    state: "{{monitoring.checks.network_interface_traffic.state}}"
+  notify: restart sensu-client
+
+- name: disk check with default threshold
+  sensu_check:
+    name: disk
+    plugin: check-disk.rb
+    state: absent
+  notify: restart sensu-client
+
+- name: disk check for specific threshold
+  sensu_check: name=disk-{{ item.name }} plugin=check-disk.rb args='-I {{ item.path }} -w {{ item.warning }} -c {{ item.critical}} -z {{ monitoring.checks.disk.criticality }}'
+  with_items: "{{ monitoring.checks.disk.specific_mnts_check }}"
+  notify: restart sensu-client
+
+- name: ntpd check
+  sensu_process_check: service=ntpd state="{{ 'present' if common.ntp.client == 'ntpd' else 'absent' }}"
+  notify: restart sensu-client
+
+- name: ntp-offset check
+  sensu_check: name=ntp-offset plugin=check-ntp.rb state="{{ 'present' if common.ntp.client == 'ntpd' else 'absent' }}"
+  notify: restart sensu-client
+
+- name: chrony check
+  sensu_process_check: service=chronyd state="{{ 'present' if common.ntp.client == 'chrony' else 'absent' }}"
+  notify: restart sensu-client
+
+- name: chrony-offset check
+  sensu_check: name=chrony-offset plugin=check-chrony.rb state="{{ 'present' if common.ntp.client == 'chrony' else 'absent' }}" use_sudo=true
+  notify: restart sensu-client
+
+- name: vmstat metrics check
+  sensu_metrics_check: name=vmstat-metrics plugin=vmstat-metrics.rb
+                       args='--scheme {{ monitoring.graphite.host_prefix }}.vmstat'
+  notify: restart sensu-client
+
+- name: load metrics check
+  sensu_metrics_check: name=load-metrics plugin=load-metrics.rb
+                       args='--scheme {{ monitoring.graphite.host_prefix }}'
+  notify: restart sensu-client
+
+- name: syslog check
+  sensu_check: name=syslog-socket plugin=check-syslog-socket.rb
+  notify: restart sensu-client
+
+- name: memory check
+  sensu_check: name=memory plugin=check-mem.sh
+               args="-w {{ monitoring.checks.memory.warning }} -c {{ monitoring.checks.memory.critical }}"
+  notify: restart sensu-client
+
+- name: check nbd devices in use
+  sensu_check: name=nbd-in-use plugin=check-nbd-in-use.sh
+  notify: restart sensu-client
+
+- name: check for files opened by multiple nbd
+  sensu_check: name=nbd-not-unique plugin=check-nbd-nonunique.sh
+  notify: restart sensu-client
+
+- name: memory metrics check
+  sensu_metrics_check: name=memory-metrics plugin=memory-metrics.rb
+                       args='--scheme {{ monitoring.graphite.host_prefix }}.memory'
+  notify: restart sensu-client
+
+- name: network metrics check
+  sensu_metrics_check: name=network-metrics plugin=metrics-net.rb
+                       args='--scheme {{ monitoring.graphite.host_prefix }}.network'
+  notify: restart sensu-client
+
+- name: check for static route on multi subnet
+  sensu_check: name=check-static-route-{{ item.cidr | regex_replace('(?P<host>.+)/(?P<size>.+)', '\\g<host>_\\g<size>') }} plugin=check-static-route.py
+               args='--subnet {{ item.cidr }} --gateway {{ nw_gw }} --criticality {{ common.monitoring.sensu_checks.check_static_route.criticality }}'
+  when:
+    - "{{ undercloud_cidr is defined and undercloud_cidr | length > 1 }}"
+    - update_routes|default('false')|bool
+    - (not (ansible_default_ipv4.network ==  ( item.cidr | ipaddr('network') )))
+  with_items: "{{ undercloud_cidr }}"
+  notify: restart sensu-client
+
+- name: check that large receive offload (LRO) is off
+  sensu_check: name=check-large-receive-offload plugin=check-large-receive-offload.py
+               args="--devices {{ common.monitoring.sensu_checks.check_lro.devices }} {{ ' --warning' if common.monitoring.sensu_checks.check_lro.warning|bool else ' ' }}"
+  when: common.monitoring.sensu_checks.check_lro.enabled|bool
+  notify: restart sensu-client
+
+- name: add sensu to adm group so it can read log files
+  user: name=sensu groups=adm append=yes
+
+- name: log files greater than 1gb check
+  sensu_check: name=log_file_size plugin=check-for-large-files.sh
+               args='-d /var/log -s 2097152' use_sudo=true
+  notify: restart sensu-client
+
+- name: log scanning caching dir
+  file: path=/var/cache/check-log owner=sensu state=directory
+
+- name: raid check
+  sensu_check_dict:
+    name: check-raid
+    check: "{{ sensu_checks.common.check_raid }}"
+  notify: restart sensu-client missing ok
+  when: common.hwraid.enabled|bool
+
+- name: check IPMI sensors
+  sensu_check: name=check-ipmi-sensors plugin=check-ipmi-sensors.py
+               args="--criticality {{ monitoring.ipmi_checks.criticality }}" use_sudo=True
+  when: monitoring.ipmi_checks.enabled|default(False)|bool
+  notify: restart sensu-client
+
+- block:
+    - name: install snmp package on controllers
+      package:
+        name: "{{ common.system_tools[ursula_os].snmp_package }}"
+      register: result
+      until: result|succeeded
+      retries: 5
+
+    - name: check that vyatta interfaces are up
+      sensu_check:
+        name: "check-vyatta-if-{{item.name}}"
+        plugin: check-vyatta-if.py
+        args: "--ip {{ item.ip }} --password {{ secrets.snmp_password }}"
+      with_items:
+        - name: primary
+          ip: "{{ undercloud_cidr[0].cidr | ipaddr('5') | ipaddr('address') }}"
+        - name: secondary
+          ip: "{{ undercloud_cidr[0].cidr | ipaddr('6') | ipaddr('address') }}"
+      notify: restart sensu-client
+
+    - name: check vyatta cpu utilization
+      sensu_check:
+        name: "check-vyatta-cpu-{{item.name}}"
+        plugin: check-vyatta-cpu.py
+        args: "--ip {{ item.ip }} --password {{ secrets.snmp_password }}"
+      with_items:
+        - name: primary
+          ip: "{{ undercloud_cidr[0].cidr | ipaddr('5') | ipaddr('address') }}"
+        - name: secondary
+          ip: "{{ undercloud_cidr[0].cidr | ipaddr('6') | ipaddr('address') }}"
+      notify: restart sensu-client
+
+    - name: check vyatta memory utilization
+      sensu_check:
+        name: "check-vyatta-mem-{{item.name}}"
+        plugin: check-vyatta-mem.py
+        args: "--ip {{ item.ip }} --password {{ secrets.snmp_password }}"
+      with_items:
+        - name: primary
+          ip: "{{ undercloud_cidr[0].cidr | ipaddr('5') | ipaddr('address') }}"
+        - name: secondary
+          ip: "{{ undercloud_cidr[0].cidr | ipaddr('6') | ipaddr('address') }}"
+      notify: restart sensu-client
+
+    - name: check vyatta tunnels status
+      sensu_check:
+        name: "check-vyatta-tunnels-status"
+        plugin: check-vyatta-tunnels.py
+        args: "--ip {{ undercloud_cidr[0].cidr | ipaddr('4') | ipaddr('address') }} --password {{ secrets.snmp_password }} --criticality {{ common.monitoring.sensu_checks.vyatta.tunnels.criticality }}"
+      notify: restart sensu-client
+  when: inventory_hostname in groups['controller'] and groups['vyatta-openstack'] is defined

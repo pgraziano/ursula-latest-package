@@ -1,0 +1,110 @@
+---
+openstack_install_method: 'distro'
+openstack_distro_type: 'osp'
+
+xtradb:
+  galera_version: 3
+  client_version: 56
+  server_version: 56
+
+stack_env: example_swift
+
+swift_fqdn: swift-openstack.example.com
+swift_floating_ip: "{{ hostvars[groups['swiftnode'][0]][primary_interface]['ipv4']['address'] }}"
+
+undercloud_cidr: 
+  - cidr: 10.1.1.0/24
+
+rhn_user: ~
+rhn_pass: ~
+
+rhn_subscription:
+  username: "{{ rhn_user }}"
+  password: "{{ rhn_pass }}"
+
+etc_hosts:
+  - name: "{{ fqdn }}"
+    ip: "{{ hostvars[groups['controller'][0]][primary_interface]['ipv4']['address'] }}"
+  - name: "{{ swift_fqdn }}"
+    ip: "{{ swift_floating_ip }}"
+
+percona:
+  replication: False
+
+swift:
+  enabled: True
+  cluster:
+    no_workers: 2
+  disks:
+    - disk: sdb
+      make_label: True
+
+cinder:
+  api_workers: 1
+glance:
+  api_workers: 1
+  registry_workers: 1
+heat:
+  api_workers: 1
+  engine_workers: 1
+
+keystone:
+  admin_workers: 2
+  public_workers: 2
+
+neutron:
+  api_workers: 1
+  metadata_workers: 1
+
+nova:
+  api_workers: 1
+  conductor_workers: 1
+  metadata_api_workers: 1
+
+common:
+  hwraid:
+    enabled: false
+
+haproxy:
+  stats_group: haproxy
+
+openstack_setup:
+  add_users: True
+  add_images: False
+  add_networks: False
+  add_cinder: False
+
+# NOTE: The following private key is *not safe* you should replace
+# this with your own private key distribution mechanism. Here for
+# demonstration purposes only!
+swift_common:
+  private_key: |
+    -----BEGIN RSA PRIVATE KEY-----
+    MIIEowIBAAKCAQEAtaUGSrXGeUudiTejoh19cSKNfVMtVw5WJgq4AfRt+iupwi7k
+    cwbUpjaCoQ06F5AnjbUlXN1dzppmnTlvLcRLQEsqGGkQ48t66nbJC0ERrvirS5Bx
+    XSKxrXGnaHtQqV7mJJEHAphDnD/jrmPhi/+HQBKo76Yw1XtJ0N4J/lk+G8a3TfAC
+    fzYfAzVwyOuTk1FnA+JzwtOIuBnkpGBb6gDr9NLsbawnrid312ZtekG7nr6tfOfB
+    h/PDx8/l1rIdQh3gIeGgq2l/HDxMmrSyZF9xdp3SjW4p52ucNd9kWaSBkMekd4oB
+    fNtLgFjNX99WREQR9aCsRSbmY2Xtg72UoKwydwIDAQABAoIBAARe8TTRBPKcQDEy
+    FozrGr6jLzZpzvh+TtJhhaX+ZLsVW+NhT3v5GRrayu/nKpOwk1MUnc6LQRucmYWF
+    AUjfpVPpuxyVQqPInK+RpirQKQXF1BFga2nrUM00o+uetAUvVGhi2QFV+qKC4w6q
+    Np4wyudey5PgsuIgMlmFTkZBjX4LkrI893ZbVPXqZ3cJIFXe3wUzi9dKeiJXDy1N
+    Nrk/1CkpI+wSduXMc23fG/yPdBv9xMDAv9pWSjNVb7tWRFQroQU+Z2BmV3izX+IT
+    LUnJAYikCcq1rKPvnmh4MvWM2Fx+OUlxAbKcUGoceGXOtMyNDZw+YymoHQxKb/1T
+    NrRK8wkCgYEA3E6ZwnRB1GjCsGoINuPb3XA6Rj1hyEOpIiUDhgRgNIOOVsBu1Cx2
+    LDiTTlBgQ7PbSwRDeHM0usnPsHWUoWutWxHk8m8dZ4shgzTjDabWJY0Mh2reVMeW
+    PnNQECySBeaKblNJ3fZ+A6dmUuS9pEjEOcok3xeJgdXhlFY93fCfEfsCgYEA0xLf
+    JV4aOdfASPvuVyqjAi3IJpE+ORkteECjck+0StfQVyTRDfwyo2P49+64ShE4AH/d
+    fam+yRgIehVOPPGOW7AkMHV8AFijNuZgmbU1pJqUodyuyAngWVzXLEhgQVUU039F
+    orG0nK3JADLgVrWOwL7iAXFDWHl4nWV4kPGwtLUCgYBJs84C3OvtCMMhS8fFvUMf
+    +Ny2BPECk4gw0Rs1qZ8Z0m07HpO1Tc6XCrJVP9SEsdYKabm8wSYB22QtD5kSy7gq
+    QHlMldnLeyNSBs5zEb6Qv3hSkXEiAceEywUc9BxB9xeWwyxyInWT+VvlHXtIS8PB
+    5ZuiOviYxBn8i0GVT1uYIwKBgEX/ji0wRfZEzKnnkqUpqKGCWUwhAsegx+mHVi0E
+    rb/cTmV3+jRvHMP+1YQzkL5Pc4kG3odcEb9Szwzdn/KqERHrGjVP4O2kd4wvXn3b
+    EI0kDoKXUwdX7yTzmxA+eF1yP9Pb81X/JOyI3Y3JUYiv8UWOiBj+XN0se4mHKzK2
+    VGm5AoGBALuemFgbQ/ikkOGlcm29VZj4oVNAGUePa0zeUPYmvdibBtcFWi2u95L1
+    H4XZ5PZElGqPP2JVKyp10tP2pu+5WX+/r4GV34ML4b24fgetRUC9J5HIff9exeI3
+    4j7WTz/A99zho9BVUSrVRJCO7CGDHGUbItkPlYe0Xj+OTa+ClhIa
+    -----END RSA PRIVATE KEY-----
+  public_key: |
+    ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC1pQZKtcZ5S52JN6OiHX1xIo19Uy1XDlYmCrgB9G36K6nCLuRzBtSmNoKhDToXkCeNtSVc3V3OmmadOW8txEtASyoYaRDjy3rqdskLQRGu+KtLkHFdIrGtcadoe1CpXuYkkQcCmEOcP+OuY+GL/4dAEqjvpjDVe0nQ3gn+WT4bxrdN8AJ/Nh8DNXDI65OTUWcD4nPC04i4GeSkYFvqAOv00uxtrCeuJ3fXZm16Qbuevq1858GH88PHz+XWsh1CHeAh4aCraX8cPEyatLJkX3F2ndKNbinna5w132RZpIGQx6R3igF820uAWM1f31ZERBH1oKxFJuZjZe2DvZSgrDJ3 swiftops@swiftnode

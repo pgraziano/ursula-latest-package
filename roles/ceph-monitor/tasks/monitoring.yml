@@ -1,0 +1,49 @@
+---
+- name: import rados module into base_venv
+  file:
+    src: "{{ ceph.pylib[ursula_os].dir }}{{ item }}"
+    dest: "{{ basevenv_lib_dir }}/{{ item }}"
+    state: link
+    owner: root
+    group: root
+    mode: 0644
+  with_items:
+    - rados.so
+    - rbd.so
+
+- name: import other ceph modules into base_venv
+  file:
+    src: "{{ ceph.pylib_dir2[ursula_os] }}{{ item }}"
+    dest: "{{ basevenv_lib_dir }}/{{ item }}"
+    state: link
+    owner: root
+    group: root
+    mode: 0644
+  with_items:
+    - ceph_argparse.py
+    - ceph_daemon.py
+
+- name: ceph status check
+  sensu_check: name=check-ceph-status plugin=check-ceph.rb
+               use_sudo=true args='--criticality {{ ceph.monitoring.sensu_checks.check_ceph_status.criticality }} {{ ceph.monitoring.sensu_checks.check_ceph_status.escalate_flags }} -o -f -p'
+  notify: restart sensu-client
+
+- name: ceph cluster usage check
+  sensu_check: name=check-ceph-cluster-usage plugin=check-ceph-usage.rb
+               use_sudo=true args='--criticality {{ ceph.monitoring.sensu_checks.check_ceph_status.criticality }} -v'
+               interval=300
+  notify: restart sensu-client
+
+- name: ceph sla metrics
+  sensu_metrics_check: name=ceph-sla-metrics plugin=metrics-os-api.py
+                       args='-S ceph --scheme {{ monitoring.graphite.host_prefix }}'
+                       use_sudo=true
+  notify: restart sensu-client
+
+- name: ceph usage metrics
+  sensu_metrics_check:
+    name: ceph-usage-metrics
+    plugin: metrics-ceph-pool-capacity.rb
+    args: '--scheme {{ monitoring.graphite.cluster_prefix }}.ceph'
+    use_sudo: true
+  notify: restart sensu-client

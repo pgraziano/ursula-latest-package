@@ -1,0 +1,30 @@
+---
+- name: Install YUM repo.
+  yum_repository:
+    name: "{{ yum_repos[repo].name|default(repo) }}"
+    description: "{{ yum_repos[repo].description|default(yum_repos[repo].name)|default(repo) }}"
+    baseurl: "{{ yum_repos[repo].repo|default(omit) }}"
+    gpgcheck: "{{ yum_repos[repo].gpgcheck|default(omit) }}"
+    state: present
+  when: yum_repos[repo].repo|default(None) and repo is defined
+  register: result
+
+- name: Install YUM repo from package.
+  yum:
+    name: "{{ yum_repos[repo].name|default(yum_repos[repo].package) }}"
+    state: present
+  when: not yum_repos[repo].repo|default(None) and repo is defined
+  register: result
+  until: '"failed" not in result'
+  retries: 5
+  delay: 10
+
+- name: Import YUM GPG key.
+  rpm_key:
+    key: "{{ yum_repos[repo].key_url|default(omit) }}"
+    state: present
+  when: yum_repos[repo].key_url|default(None) and repo is defined
+  register: result
+  until: '"failed" not in result'
+  retries: 5
+  delay: 10

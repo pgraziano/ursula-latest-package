@@ -1,0 +1,23 @@
+---
+dependencies:
+  - role: apt-repos
+    repos:
+      - repo: 'deb {{ apt_repos.erlang.repo }} {{ ansible_lsb.codename }} contrib'
+        key_url: '{{ apt_repos.erlang.key_url }}'
+      - repo: 'deb {{ apt_repos.rabbitmq.repo }} testing main'
+        key_url: '{{ apt_repos.rabbitmq.key_url }}'
+    when: ursula_os == 'ubuntu'
+  - role: monitoring-common
+    when: monitoring.enabled|default(True)|bool
+  - role: logging-config
+    when: logging.enabled|default(True)|bool
+    service: rabbitmq
+    logdata: "{{ rabbitmq.logs }}"
+  - role: inspec
+    install_inspec_controls: [rabbitmq]
+    tags: inspec
+    when:
+      - inspec.enabled|bool
+      - inspec.controls.rabbitmq.enabled|bool
+  - role: collectd-plugin
+    when: collectd is defined and collectd.enabled|bool

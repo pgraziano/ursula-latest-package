@@ -1,0 +1,12 @@
+---
+- name: tests on a single controller for swift
+  hosts: controller[0]
+  tasks:
+  - name: OpenStack service list should include swift
+    shell: . /root/stackrc; openstack service list | grep swift
+
+  - name: OpenStack endpoint list should include swift
+    shell: . /root/stackrc; openstack endpoint list | grep swift
+
+  - name: swift has a working api
+    shell: . /root/stackrc; openstack object store account show | grep Containers

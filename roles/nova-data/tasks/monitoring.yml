@@ -1,0 +1,31 @@
+---
+# nova compute
+- name: compute process check
+  sensu_process_check: service=nova-compute
+  notify: restart sensu-client
+
+- name: neutron linuxbridge agent check
+  sensu_process_check: service=neutron-linuxbridge-agent
+  notify: restart sensu-client
+  when: neutron.plugin=='ml2'
+
+- name: nova cinder session check
+  sensu_metrics_check: name=check-cinder-sessions plugin=check-cinder-sessions.py
+                       interval=10
+  notify: restart sensu-client
+  when:
+    - not ceph.enabled
+    - cinder.enabled|bool or (cinderv2 is defined and cinderv2.enabled|bool)
+
+- name: qemu crash check
+  sensu_check_dict:
+    name: "check-qemu-crash"
+    check: "{{ sensu_checks.nova.check_qemu_crash }}"
+  notify: restart sensu-client
+
+- name: nova compute data out of sync check
+  sensu_check: name=check-nova-compute-not-sync plugin=check-log.rb use_sudo=true
+               auto_resolve=false interval=120 occurrences=1
+               args="-f '/var/log/nova/nova-compute.log' -q 'ERROR nova.compute.manager.*Error updating resources for node' --silent"
+               state=absent
+  notify: restart sensu-client

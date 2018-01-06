@@ -1,0 +1,50 @@
+default:
+  memory: 512
+  cpus: 1
+
+vms:
+  controller1:
+    ip_address:
+      - 172.16.0.101
+      - 192.168.255.101
+    memory: 3072
+    custom: '["modifyvm", :id, "--nicpromisc3", "allow-all"]'
+  swiftnode1:
+    ip_address:
+       - 172.16.0.111
+       - 10.1.1.131
+    memory: 768
+    custom:
+      - "['createhd', '--filename', 'proxy1.1.vdi', '--size', 1024]"
+      - "['storageattach', :id, '--storagectl', 'SATA Controller', '--port', 1, '--device', 0, '--type', 'hdd', '--medium', 'proxy1.1.vdi']"
+    libvirt:
+      storage:
+        file:
+        size: 1G
+        type: qcow2
+  swiftnode2:
+    ip_address: 
+      - 172.16.0.112
+      - 10.1.1.132
+    memory: 768
+    custom:
+      - "['createhd', '--filename', 'proxy2.1.vdi', '--size', 1024]"
+      - "['storageattach', :id, '--storagectl', 'SATA Controller', '--port', 1, '--device', 0, '--type', 'hdd', '--medium', 'proxy2.1.vdi']"
+    libvirt:
+      storage:
+        file:
+        size: 1G
+        type: qcow2
+  swiftnode3:
+    ip_address: 
+      - 172.16.0.113
+      - 10.1.1.133
+    memory: 768
+    custom:
+      - "['createhd', '--filename', 'proxy3.1.vdi', '--size', 1024]"
+      - "['storageattach', :id, '--storagectl', 'SATA Controller', '--port', 1, '--device', 0, '--type', 'hdd', '--medium', 'proxy3.1.vdi']"
+    libvirt:
+      storage:
+        file:
+        size: 1G
+        type: qcow2

@@ -1,0 +1,59 @@
+---
+horizon:
+  keystone_api_version: 3
+  session_timeout: 5400
+  api_result_limit: 1000
+  api_result_page_size: 20
+  dropdown_max_items: 30
+  customize: false
+  horizon_lib_dir: "/opt/openstack/current/horizon"
+  rhel_lib_dir: "/usr/share/openstack-dashboard"
+  nextgen_instance_panel: true
+  legacy_instance_panel: false
+  session_engine: django.contrib.sessions.backends.cache
+  password_validator:
+    enabled: false
+    regex: '^(?=.*\d)(?=.*[a-z]).{8,}$'
+    help_text: 'Password is not compliant. Password must contain lowercase letters, digits, and be at least 8 characters in length.'
+  glance:
+    allow_location: False
+  distro:
+    project_packages:
+      - openstack-dashboard
+    python_post_dependencies: []
+  source:
+    python_post_dependencies: []
+    rev: newton-eol
+    upper_constraints: '{{ openstack_meta.upper_constraints }}'
+    python_dependencies:
+      - { name: PyMySQL }
+      - { name: python-memcached }
+      - { name: neutron-lbaas-dashboard, version: '1.0.0' }
+      - { name: django_openstack_auth, version: '2.2.1.dev1' }
+    system_dependencies:
+      ubuntu:
+        - apache2
+        - gettext
+        - libapache2-mod-wsgi
+      rhel:
+        - httpd
+        - gettext
+        - mod_wsgi
+        - mod_proxy_uwsgi
+  logs:
+    - paths:
+        - /var/log/horizon/*.log
+      fields:
+        type: openstack
+        tags: horizon
+  logging:
+    debug: False
+    verbose: True
+  monitoring:
+    sensu_checks:
+      check_http:
+        criticality: 'critical'
+  websso:
+     choices:
+       credentials: 'Keystone Authentication'
+       oidc: 'OpenID Connect Authentication'

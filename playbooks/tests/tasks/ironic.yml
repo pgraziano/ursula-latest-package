@@ -1,0 +1,9 @@
+---
+- name: test ironic api and conductor
+  hosts: controller
+  tasks:
+  - name: ironic has a working api
+    shell: . /root/stackrc; ironic node-list | grep UUID
+  
+  - name: ironic-conductor is running
+    shell: service ironic-conductor status | grep running

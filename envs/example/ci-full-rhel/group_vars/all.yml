@@ -1,0 +1,85 @@
+---
+openstack_install_method: 'distro'
+openstack_distro_type: 'osp'
+ursula_os: 'rhel'
+
+stack_env: ci-full-centos
+undercloud_cidr:
+  - cidr: 192.168.0.0/22
+state_path_base: /opt/stack/data
+
+rhn_subscription:
+  username: "{{ rhn_user }}"
+  password: "{{ rhn_pass }}"
+
+etc_hosts:
+  - name: "{{ fqdn }}"
+    ip: "{{ floating_ip }}"
+
+neutron:
+  enable_external_interface: True
+  l3ha:
+    enabled: True
+    max_agents: 2
+    min_agents: 2
+    cidr: 169.254.192.0/18
+    password: "{{ secrets.service_password }}"
+    interval: 2
+  lbaas:
+    enabled: True
+
+common:
+  hwraid:
+    enabled: False
+
+logging:
+  enabled: true
+  follow:
+    enabled: true
+    global_fields:
+      customer_id: "unknown"
+      cluster_name: "unknown"
+    logs:
+      - paths:
+          - /var/log/messages
+        fields:
+          type: syslog
+  forward:
+    host: 127.0.0.1
+
+inspec:
+  enabled: True
+
+xtradb:
+  galera_version: 3
+  client_version: 56
+  server_version: 56
+
+haproxy:
+  stats_group: root
+
+keystone:
+  uwsgi:
+    method: port
+
+nova:
+  libvirt_type: kvm
+
+heat:
+  enabled: True
+  plugin_dirs:
+    - '/usr/lib/heat'
+    - '/usr/lib64/heat'
+
+ironic:
+  enabled: False
+
+glance:
+  store_smart: false
+  store_file: true
+
+lvm:
+  enabled: true
+
+cinder:
+  enabled: true

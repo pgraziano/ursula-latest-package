@@ -1,0 +1,13 @@
+---
+- name: set up log rotation for neutron
+  logrotate: name=neutron path=/var/log/neutron/*.log
+  args:
+    options:
+      - daily
+      - missingok
+      - rotate 7
+      - compress
+      - notifempty
+      - delaycompress
+  when: openstack_install_method != 'distro'
+  

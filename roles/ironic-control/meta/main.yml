@@ -1,0 +1,10 @@
+---
+dependencies:
+  - role: ironic-common
+  - role: openstack-database
+    database_name: ironic
+    db_version_table: 'alembic_version'
+    db_version_col: 'version_num'
+    db_version: 'db versions'
+    db_sync_cmd: 'ironic-dbsync'
+    db_sync: 'upgrade'

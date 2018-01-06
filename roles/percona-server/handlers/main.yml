@@ -1,0 +1,9 @@
+---
+- name: restart mysql server
+  service: name=mysql state=restarted
+
+- name: restart mysql server if upgrade
+  service:
+    name: mysql
+    state: restarted
+  when: upgrade | default('False') | bool

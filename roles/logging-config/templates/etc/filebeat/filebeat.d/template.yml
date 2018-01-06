@@ -1,0 +1,13 @@
+# {{ ansible_managed }}
+---
+filebeat:
+{% if logdata | length > 0 %}
+  prospectors:
+{% for log in logdata %}
+    - fields_under_root: true
+      paths: {{ log.paths | to_yaml }}
+{%- if log.fields is defined %}{% set _dummy = log.fields.update(logging.follow.global_fields) %}{% endif %}
+      fields: {{ log.fields | default(logging.follow.global_fields) | to_yaml  }}
+{% endfor %}
+{% endif %}
+

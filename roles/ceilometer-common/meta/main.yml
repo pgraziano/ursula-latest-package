@@ -1,0 +1,39 @@
+---
+dependencies:
+  - role: openstack-meta
+  - role: endpoints
+  - role: monitoring-common
+    when: monitoring.enabled|default(True)|bool
+  - role: logging-config
+    when: logging.enabled|default(True)|bool
+    service: ceilometer
+    logdata: "{{ ceilometer.logs }}"
+  - role: inspec
+    install_inspec_controls: [ceilometer]
+    tags: inspec
+    when:
+      - inspec.enabled|bool
+      - inspec.controls.ceilometer.enabled|bool
+  - role: openstack-source
+    project_name: ceilometer
+    project_rev: "{{ ceilometer.source.rev }}"
+    alternatives: "{{ ceilometer.alternatives }}"
+    python_dependencies: "{{ ceilometer.source.python_dependencies }}"
+    upper_constraints: "{{ ceilometer.source.upper_constraints }}"
+    when: openstack_install_method == 'source'
+  - role: openstack-package
+    project_name: ceilometer
+    alternatives: "{{ ceilometer.alternatives }}"
+    when: openstack_install_method == 'package'
+  - role: openstack-distro
+    project_name: ceilometer
+    project_packages: "{{ ceilometer.distro.controller.project_packages }}"
+    when:
+      - openstack_install_method == 'distro'
+      - inventory_hostname in groups['controller']
+  - role: openstack-distro
+    project_name: ceilometer
+    project_packages: "{{ ceilometer.distro.compute.project_packages }}"
+    when:
+      - openstack_install_method == 'distro'
+      - inventory_hostname in groups['compute']

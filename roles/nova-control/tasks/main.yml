@@ -1,0 +1,181 @@
+---
+- include: novnc.yml
+  when: openstack_install_method != 'distro'
+  tags: novnc
+
+- name: set uwsgi path (source install)
+  set_fact: nova_uwsgi_path={{ openstack_source.virtualenv_base }}/nova/bin/uwsgi
+  when: openstack_install_method == 'source'
+
+- name: set uwsgi path (package install ubuntu)
+  set_fact:
+    nova_uwsgi_path: "{{ openstack_package.virtualenv_base }}/nova/bin/uwsgi"
+  when: openstack_install_method == 'package' and ursula_os == 'ubuntu'
+
+- name: set uwsgi path (package install rhel)
+  set_fact:
+    nova_uwsgi_path: "/usr/sbin/uwsgi"
+  when: openstack_install_method == 'distro'
+
+- name: Create nova placement api uwsgi and config directories
+  file: path={{ item }} state=directory
+        owner=nova group=nova mode=0775
+  with_items:
+    - /etc/nova/uwsgi
+    - /run/uwsgi/nova
+
+- name: configure nova placement api wsgi
+  template: src=etc/nova/uwsgi/placement.ini
+            dest=/etc/nova/uwsgi/placement.ini mode=0775
+            owner=nova group=nova
+
+- name: remove nova placement api apache conf (rhel)
+  file:
+    dest: /etc/httpd/conf.d/00-nova-placement-api.conf
+    state: absent
+  failed_when: false
+  when: openstack_install_method == 'distro'
+
+- block:
+  - name: remove retired nova controller services (ubuntu)
+    upstart_service:
+      name: "{{ item.name }}"
+      user: "{{ item.user }}"
+      cmd: "{{ item.cmd }}"
+      config_dirs: "{{ item.config_dirs }}"
+      state: "{{ item.state }}"
+    with_items:
+      - "{{ nova.services.nova_cert }}"
+
+  - name: get nova-cert service ids
+    shell: . /root/stackrc; nova service-list --binary nova-cert | grep nova-cert | awk '{print $2}'
+    run_once: true
+    register: nova_cert_srvc_ids
+    failed_when: false
+    changed_when: false
+
+  - name: remove retired nova-cert from nova service
+    shell: . /root/stackrc; nova service-delete {{ item }}
+    with_items: "{{ nova_cert_srvc_ids.stdout_lines }}"
+    run_once: true
+
+  - name: install nova controller services (ubuntu)
+    upstart_service:
+      name: "{{ item.name }}"
+      user: "{{ item.user }}"
+      cmd: "{{ item.cmd }}"
+      config_dirs: "{{ item.config_dirs }}"
+    with_items:
+      - "{{ nova.services.nova_api }}"
+      - "{{ nova.services.nova_conductor }}"
+      - "{{ nova.services.nova_consoleauth }}"
+      - "{{ nova.services.nova_scheduler }}"
+      - "{{ nova.services.nova_novncproxy }}"
+
+  - name: install nova placement api uwsgi service (ubuntu)
+    template: src=etc/init/nova-placement-api.conf
+              dest=/etc/init/nova-placement-api.conf mode=0644
+  when: ursula_os == 'ubuntu'
+
+- block:
+  - name: remove retired nova controller services (rhel)
+    systemd_service:
+      name: "{{ item.name }}"
+      cmd: "{{ item.cmd }}"
+      state: "{{ item.state }}"
+    with_items:
+      - "{{ nova.services.nova_cert }}"
+      - "{{ nova.services.nova_cells }}"
+
+  - name: install nova controller services (rhel)
+    systemd_service:
+      name: "{{ item.name }}"
+      description: "{{ item.desc }}"
+      type: "{{ item.type }}"
+      notify_access: "{{ item.notify_access|default(omit) }}"
+      user: "{{ item.user }}"
+      cmd: "{{ item.cmd }}"
+      config_dirs: "{{ item.config_dirs }}"
+      config_files: "{{ item.config_files }}"
+      restart: "{{ item.restart }}"
+    with_items:
+      - "{{ nova.services.nova_api }}"
+      - "{{ nova.services.nova_conductor }}"
+      - "{{ nova.services.nova_consoleauth }}"
+      - "{{ nova.services.nova_scheduler }}"
+      - "{{ nova.services.nova_novncproxy }}"
+
+  - name: install nova placement api uwsgi service (rhel)
+    systemd_service:
+      name: "{{ item.name }}"
+      description: "{{ item.desc }}"
+      cmd: "{{ nova_uwsgi_path }}"
+      args: "{{ item.args }}"
+      user: "{{ item.user }}"
+      type: "{{ item.type }}"
+      notify_access: "{{ item.notify_access }}"
+      restart: "{{ item.restart }}"
+      kill_signal: "SIGINT"
+    with_items:
+      - "{{ openstack_meta.nova.services.nova_placement_api[ursula_os] }}"
+
+  - name: Configure tmpfiles.d for creation of /run/uwsgi/nova on reboot
+    template:
+      src: usr/lib/tmpfiles.d/openstack-nova-placement-api.conf
+      dest: /usr/lib/tmpfiles.d/openstack-nova-placement-api.conf
+      mode: 0644
+  when: ursula_os == 'rhel'
+
+#FIXME do we need this on rhosp?
+- name: install nova-quota-sync script
+  copy: src=nova-quota-sync
+        dest=/usr/local/sbin/nova-quota-sync
+        mode=0755
+        owner=root
+
+- name: sync nova database
+  command: nova-manage db sync
+  when: database_create.changed or force_sync|default('false')|bool
+  run_once: true
+  changed_when: true
+  notify: restart nova services
+  # we want this to always be changed so that it can notify the service restart
+  tags: db-migrate
+
+- name: sync nova api database
+  command: nova-manage api_db sync
+  when: database_create.changed or force_sync|default('false')|bool
+  run_once: true
+  changed_when: true
+  notify: restart nova services
+  # we want this to always be changed so that it can notify the service restart
+  tags: db-migrate
+
+- name: trigger restart on upgrades
+  debug:
+    msg: "Triggering service restart for upgrade"
+  changed_when: True
+  notify: restart nova services
+  when: code_has_changed | default('False') | bool and
+        upgrade | default('False') | bool
+
+- meta: flush_handlers
+
+- name: start nova controller services
+  service:
+    name: "{{ item.name }}"
+    state: started
+    enabled: True
+  with_items:
+    - "{{ nova.services.nova_api }}"
+    - "{{ nova.services.nova_conductor }}"
+    - "{{ nova.services.nova_consoleauth }}"
+    - "{{ nova.services.nova_scheduler }}"
+    - "{{ nova.services.nova_novncproxy }}"
+    - "{{ nova.services.nova_placement_api }}"
+
+- include: monitoring.yml
+  tags:
+    - monitoring
+    - common
+  when: monitoring.enabled|default('True')|bool

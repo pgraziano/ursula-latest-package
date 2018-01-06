@@ -1,0 +1,166 @@
+---
+# These are all known checks and are made available to
+# roles by including it as a meta dependency.
+# Remember that dict merging is enabled when modifying
+# values of them in var overrides.
+
+# When adding extra checks to it .. the second level of
+# the dict should be named for the role that uses it and
+# the third level should be the check name.
+
+sensu_checks:
+  apache:
+    check_apache_process:
+      handler: default
+      notification: "unexpected number of apache2 processes"
+      interval: 120
+      standalone: true
+      command: "check-procs.rb -p apache2 -w 50 -c 100 -W 1 -C 1"
+      service_owner: openstack
+
+  common:
+    check_sshd_process:
+      handler: default
+      notification: "unexpected number of sshd processes"
+      interval: 120
+      standalone: true
+      command: "check-procs.rb -p sshd -w 50 -c 100 -W 1 -C 1"
+      service_owner: openstack
+    check_ntp_process:
+      handler: default
+      notification: "unexpected number of ntp processes"
+      interval: 120
+      standalone: true
+      command: "check-procs.rb -p ntp -W 1 -C 1"
+      service_owner: openstack
+    check_disk_space:
+      handler: default
+      interval: 120
+      standalone: true
+      command: "check-disk.rb -w 80 -c 90"
+      service_owner: openstack
+    check_raid:
+      handler: default
+      interval: 300
+      occurrences: 1
+      standalone: true
+      command: "check-raid.sh -z critical"
+      service_owner: openstack
+      tags:
+        - ticket
+    network_interface_traffic:
+      auto_resolve: true
+      handler: default
+      interval: 30
+      occurrences: 2
+      standalone: true
+      command: "sudo check-netif.rb -c {{monitoring.checks.network_interface_traffic.critical}} -w {{monitoring.checks.network_interface_traffic.warning}} --interfaces {{monitoring.checks.network_interface_traffic.interface}}"
+      service_owner: openstack
+
+
+  neutron:
+    check_neutron_agents:
+      handler: default
+      notification: "unexpected number of neutron agents"
+      interval: 120
+      standalone: true
+      command: check-neutron-agents.sh -z critical
+      service_owner: openstack
+      dependencies: "{{ 'keepalive' | sensu_dependencies(hostvars, groups, 'controller,compute') }}"
+      # above is incredibly ugly, but works. Creates the list below.
+      #dependencies:
+      #  - "controller1.ursula-vagrant/keepalive"
+      #  - "controller2.ursula-vagrant/keepalive"
+      #  - "compute1.ursula-vagrant/keepalive"
+    check_neutron_agents_duplicate:
+      handler: default
+      notification: "duplicate neutron agents"
+      interval: 120
+      standalone: true
+      command: check-neutron-agents-duplicate.py --criticality critical
+      service_owner: openstack
+      dependencies: []
+    check_neutron_l3_routers:
+      handler: default
+      notification: "neutron router check multiple l3 agents active or all standby status"
+      occurrences: 1
+      interval: 600
+      max_routers: 100
+      delay_seconds: 120
+      standalone: true
+      command: check-neutron-l3-routers.sh
+      service_owner: openstack
+      dependencies: []
+
+  nova:
+    check_nova_services:
+      auto_resolve: true
+      handler: default
+      interval: 120
+      standalone: true
+      command: sudo check-nova-services.sh -z critical
+      service_owner: openstack
+      dependencies: "{{ 'keepalive' | sensu_dependencies(hostvars, groups, 'controller') }}"
+      # above is incredibly ugly, but works. Creates the list below.
+      #dependencies:
+      #  - "controller1.ursula-vagrant/keepalive"
+      #  - "controller2.ursula-vagrant/keepalive"
+    check_qemu_crash:
+      handler: default
+      interval: 30
+      standalone: true
+      command: sudo check-dir-new-files.rb -z critical
+      service_owner: openstack
+      auto_resolve: false
+
+  percona:
+    check_cluster_size:
+      handler: default
+      notification: "unexpected number of mysql processes"
+      interval: 120
+      standalone: true
+      command: "sudo percona-cluster-size.rb -d /root/.my.cnf --expected 3 --criticality critical"
+      service_owner: openstack
+      dependencies: "{{ 'keepalive' | sensu_dependencies(hostvars, groups, 'db,db_arbiter') }}"
+      # above is incredibly ugly, but works. Creates the list below.
+      #dependencies:
+      #  - "controller1.ursula-vagrant/keepalive"
+      #  - "controller2.ursula-vagrant/keepalive"
+      #  - "compute1.ursula-vagrant/keepalive"
+    check_mysql_process:
+      handler: default
+      notification: "unexpected number of mysql processes"
+      interval: 120
+      standalone: true
+      command: "check-procs.rb -p mysql -W 1 -C 1"
+      service_owner: openstack
+    check_garbd_process:
+      handler: default
+      notification: "unexpected number of garbd processes"
+      interval: 120
+      standalone: true
+      command: "check-procs.rb -p garbd -W 1 -C 1"
+      service_owner: openstack
+
+  rabbitmq:
+    check_rabbitmq_server_process:
+      handler: default
+      notification: "unexpected number of rabbitmq-server processes"
+      interval: 120
+      standalone: true
+      command: "check-procs.rb -p rabbitmq-server -W 1 -C 1"
+      service_owner: openstack
+
+  sensu_client:
+    check_serverspec:
+      handler: default
+      interval: 600
+      standalone: true
+      command: "sudo check-serverspec.rb -d /etc/serverspec -s warning"
+      service_owner: openstack
+    check_inspec:
+      interval: 600
+      handler: default
+      standalone: true
+      command: "sudo check-inspec.rb --control /etc/inspec/controls"
+      service_owner: openstack

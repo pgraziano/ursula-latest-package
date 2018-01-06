@@ -1,0 +1,76 @@
+---
+- name: uninstall logstash-forwarder
+  package: name=logstash-forwarder state=absent
+
+- name: install filebeat apt
+  apt:
+    pkg: "filebeat"
+  register: result
+  until: result|success
+  retries: 3
+  delay: 10
+  notify: restart filebeat
+  when: ursula_os == "ubuntu"
+
+- name: install filebeat yum
+  yum:
+    name: "filebeat"
+  register: result
+  until: result|success
+  retries: 3
+  delay: 10
+  notify: restart filebeat
+  when: ursula_os == "rhel"
+
+- name: filebeat config directory
+  file:
+    dest: /etc/filebeat/filebeat.d
+    state: directory
+    mode: 0755
+
+- name: configure filebeat
+  template:
+    src: etc/filebeat/filebeat.yml
+    dest: /etc/filebeat/filebeat.yml
+    mode: 0644
+  notify: restart filebeat
+  when: logging.forward.host
+
+# We create our own index template in roles/logstash
+- name: remove filebeat.template.json
+  file:
+    path: /etc/filebeat/filebeat.template.json
+    state: absent
+
+- name: custom cert auth directory
+  file:
+    dest: /usr/local/share/ca-certificates
+    state: directory
+    mode: 0755
+  when: logging.forward.host and logging.forward.tls.enabled
+
+- name: (possibly self-signed) ssl cert
+  template:
+    src: logging-forward.crt
+    dest: /usr/local/share/ca-certificates/logging-forward.crt
+    mode: 0644
+  notify:
+    - refresh cert auths
+    - restart filebeat
+  when: logging.forward.host and logging.forward.tls.enabled
+
+- meta: flush_handlers
+
+- name: start and enable filebeat service
+  service: name=filebeat state=started enabled=yes
+  register: result
+  until: result|success
+  retries: 3
+  delay: 10
+
+# FIXME: despite "enabled=yes" in previous task, filebeat does not autostart
+# on reboot. Adding this until we root cause the failure above. Likely to 
+# do with the mix of sysv/upstart service handling. --cmt
+- name: force the start of filebeat
+  command: /usr/sbin/update-rc.d filebeat defaults
+  when: ursula_os == "ubuntu"

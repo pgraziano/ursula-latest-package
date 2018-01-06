@@ -1,0 +1,8 @@
+---
+- name: set up gem sources if needed
+  template: src=etc/gemrc dest=/root/.gemrc
+  when: openstack.gem_sources is defined
+
+- name: set up gem sources if unused
+  file: dest=/root/.gemrc state=absent
+  when: openstack.gem_sources is not defined

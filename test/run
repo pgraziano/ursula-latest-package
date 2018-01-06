@@ -1,0 +1,51 @@
+#!/bin/bash -x
+
+ACTION=all
+if [ $# -gt 0 ]; then
+    ACTION=$1
+fi
+
+shift
+
+if [ "${ACTION}" != "all" -a "${ACTION}" != "test" -a "${ACTION}" != "rally" -a "${ACTION}" != "deploy" -a "${ACTION}" != "cleanup" -a "${ACTION}" != 'unit' -a "${ACTION}" != 'upgrade' -a "${ACTION}" != "rhn_unsubscribe" ]; then
+  echo "Usage: run [unit | test | rally | deploy | cleanup | upgrade | rhn_unsubscribe] [EXTRA ANSIBLE ARGS]"
+  exit 1
+fi
+
+source $(dirname $0)/common
+
+cd ${ROOT}
+
+extra_args="--ursula-user=${LOGIN_USER} --ursula-debug --ursula-sudo"
+
+if [ "${ACTION}" == "all" -o "${ACTION}" == "deploy" ]; then
+  time ursula ${extra_args} "${ENV_DIR}" site.yml -u ${LOGIN_USER} "$@"
+  ring_bell
+fi
+
+if [ "${ACTION}" == "all" -o "${ACTION}" == "test" ]; then
+  time ursula ${extra_args} "${ENV_DIR}" ${ROOT}/playbooks/tests/tasks/main.yml -u ${LOGIN_USER} $@
+  ring_bell
+fi
+
+if [ "${ACTION}" == "all" -o "${ACTION}" == "rally" ]; then
+  time ursula ${extra_args} "${ENV_DIR}" ${ROOT}/playbooks/tests/tasks/rally.yml -u ${LOGIN_USER} "$@"
+  ring_bell
+fi
+
+if [ "${ACTION}" == "all" -o "${ACTION}" == "cleanup" ]; then
+  time ursula ${extra_args} "${ENV_DIR}" ${ROOT}/playbooks/tests/tasks/cleanup.yml -u ${LOGIN_USER}
+  ring_bell
+fi
+
+if [ "${ACTION}" == "upgrade" ]; then
+  time ursula ${extra_args} "${ENV_DIR}" upgrade.yml -u ${LOGIN_USER} "$@"
+  ring_bell
+fi
+
+if [ "${ACTION}" == "rhn_unsubscribe" ]; then
+  time ursula ${extra_args} "${ENV_DIR}" ${ROOT}/playbooks/rhn_unsubscribe.yml -u ${LOGIN_USER} "$@"
+  ring_bell
+fi
+
+echo "test complete"

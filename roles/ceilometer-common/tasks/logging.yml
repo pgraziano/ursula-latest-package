@@ -1,0 +1,13 @@
+---
+- name: set up log rotation for ceilometer
+  logrotate: name=ceilometer path=/var/log/ceilometer/*.log
+  args:
+    options:
+      - daily
+      - missingok
+      - rotate 7
+      - compress
+      - notifempty
+      - delaycompress
+  when: openstack_install_method != 'distro'
+ 

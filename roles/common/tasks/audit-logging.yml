@@ -1,0 +1,10 @@
+---
+- name: setup logrotate for audit.log
+  logrotate: name=auditd path=/var/log/audit/audit.log
+  args:
+    options:
+      - daily
+      - rotate 7
+      - missingok
+      - compress
+      - minsize 100k

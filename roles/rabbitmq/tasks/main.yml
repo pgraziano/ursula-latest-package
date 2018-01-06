@@ -1,0 +1,129 @@
+---
+# set up some pieces before installing rabbit so that mnesia data
+# doesn't need to be deleted
+- name: add rabbitmq config directory
+  file: dest=/etc/rabbitmq state=directory owner=root mode=0755
+
+- block:
+  - name: install erlang-solutions erlang (ubuntu)
+    apt:
+      pkg: esl-erlang={{ rabbitmq.version.esl_erlang }}
+      force: True
+    register: result
+    until: result|succeeded
+    retries: 5
+    notify: restart rabbitmq
+
+  - name: install rabbitmq-server (ubuntu)
+    package:
+      name: rabbitmq-server={{ rabbitmq.version.rabbitmq_server }}
+    register: result
+    until: result|succeeded
+    retries: 5
+    notify: restart rabbitmq
+  when: ursula_os == "ubuntu"
+
+- block:
+  - name: install EPEL erlang (rhel)
+    package:
+      name: erlang
+      state: latest
+    register: result
+    until: result|succeeded
+    retries: 5
+    notify: restart rabbitmq
+
+  - name: install rabbitmq-server (rhel)
+    package:
+      name: rabbitmq-server
+      state: latest
+    register: result
+    until: result|succeeded
+    retries: 5
+    notify: restart rabbitmq
+
+  - name: create systemd override dir
+    file:
+      dest: /etc/systemd/system/rabbitmq-server.service.d
+      state: directory
+
+  - name: set systemd overrides
+    copy:
+      dest: /etc/systemd/system/rabbitmq-server.service.d/override.conf
+      content: "{{ rabbitmq.systemd.custom }}"
+      force: yes
+    register: override
+
+  - name: restart systemd
+    command: systemctl daemon-reload
+    when: override.changed
+    notify:
+      - restart rabbitmq
+  when: ursula_os == "rhel"
+
+- name: add rabbitmq environment configuration
+  template: src=etc/rabbitmq/rabbitmq-env.conf
+            dest=/etc/rabbitmq/rabbitmq-env.conf
+            owner=rabbitmq group=rabbitmq mode=0600
+
+- name: add rabbitmq security limits file
+  template:
+    src: etc/security/limits.d/10-rabbitmq.conf
+    dest: /etc/security/limits.d/10-rabbitmq.conf
+    owner: root
+    group: root
+    mode: 0644
+  notify:
+    - login as rabbitmq to update limits
+    - restart rabbitmq
+
+- name: add rabbitmq defaults
+  template:
+    src: etc/default/rabbitmq-server
+    dest: /etc/default/rabbitmq-server
+    owner: root
+    group: root
+    mode: 0644
+  notify:
+    - login as rabbitmq to update limits
+    - restart rabbitmq
+
+# Create the cluster if desired
+- include: cluster.yml
+  when: rabbitmq.cluster|bool
+
+- name: ensure rabbit is started
+  service:
+    name: rabbitmq-server
+    state: started
+    enabled: true
+
+# Backward compatibility with existing configurations.
+- name: remove default rabbit user
+  rabbitmq_user: user=guest state=absent  node={{ rabbitmq.nodename }}
+  when: not rabbitmq.cluster
+
+- name: openstack rabbit user
+  rabbitmq_user: user={{ rabbitmq.user }}
+                 password={{ secrets.rabbit_password }}
+                 node={{ rabbitmq.nodename }} vhost=/ tags=administrator
+                 configure_priv=.* read_priv=.*
+                 write_priv=.* state=present
+
+- name: install management plugin
+  rabbitmq_plugin: names=rabbitmq_management
+  notify: restart rabbitmq
+
+- meta: flush_handlers
+
+- name: install rabbitmqadmin
+  get_url: dest=/usr/local/bin/ url={{ rabbitmq.admin_cli_url }}
+
+- name: correct rabbitmqadmin modes
+  file: group=root owner=root mode=0755 path=/usr/local/bin/rabbitmqadmin
+
+- include: monitoring.yml
+  tags:
+    - monitoring
+    - common
+  when: monitoring.enabled|default('True')|bool

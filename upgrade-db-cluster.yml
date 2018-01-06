@@ -1,0 +1,78 @@
+---
+# stop all the dbs to prevent writes
+- name: stop databases
+  service: name=mysql state=stopped
+
+- name: remove old packages
+  apt: name={{ item }} state=absent
+  with_items:
+    - percona-xtradb-cluster-server-5.5
+    - percona-xtradb-cluster-galera-2.x
+    - percona-xtradb-cluster-common-5.5
+    - percona-xtradb-cluster-client-5.5
+  register: result
+  until: result|succeeded
+  retries: 5
+
+- name: configure my.cnf
+  template: src=roles/percona-server/templates/etc/my.cnf dest=/etc/my.cnf mode=0644
+  when: ansible_distribution_version == "12.04"
+  notify:
+    - restart mysql server
+
+- name: configure my.cnf
+  template: src=roles/percona-server/templates/etc/my.cnf dest=/etc/mysql/my.cnf mode=0644
+  when: ansible_distribution_version != "12.04"
+  notify:
+    - restart mysql server
+
+- name: install mysql config files
+  template: src=roles/percona-server/templates/etc/mysql/conf.d/{{ item }} dest=/etc/mysql/conf.d/{{ item }}
+            mode=0644
+  with_items:
+    - bind-inaddr-any.cnf
+    - tuning.cnf
+    - utf8.cnf
+
+- name: adjust replication for compatability and new features
+  lineinfile: regexp="{{ item.value.regexp }}" line="{{ item.value.line }}"
+              dest=/etc/mysql/conf.d/replication.cnf state=present
+  with_dict:
+    provider:
+      regexp: '^wsrep_provider\s*='
+      line: "wsrep_provider = none"
+    provider_options:
+      regexp: '^wsrep_provider_options\s*='
+      line: 'wsrep_provider_options="socket.checksum=1"'
+    log_bin_v1:
+      regexp: '^log_bin_use_v1_row_events\s*='
+      line: 'log_bin_use_v1_row_events=1'
+    gtid:
+      regexp: '^gtid_mode\s*='
+      line: 'gtid_mode=0'
+    binlog:
+      regexp: '^binlog_checksum\s*='
+      line: 'binlog_checksum=None'
+    wsrep_method:
+      regexp: '^wsrep_sst_method\s*='
+      line: "wsrep_sst_method = xtrabackup-v2"
+    read_only:
+      regexp: '^read_only\s*='
+      line: "read_only = ON"
+
+- name: install new packages
+  apt: name=percona-xtradb-cluster-56
+  register: result
+  until: result|succeeded
+  retries: 5
+
+- name: run mysql_upgrade
+  command: mysql_upgrade
+
+- name: restore galera wsrep provider
+  lineinfile: regexp='^wsrep_provider\s*='
+              line="wsrep_provider = /usr/lib/libgalera_smm.so"
+              dest=/etc/mysql/conf.d/replication.cnf
+
+- name: restart mysql to rejoin the cluster
+  service: name=mysql state=restarted

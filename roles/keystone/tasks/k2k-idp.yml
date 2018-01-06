@@ -1,0 +1,29 @@
+---
+- name: install keystone saml signing public cert
+  template:
+    src: etc/keystone/keystone-saml.crt
+    dest: /etc/keystone/keystone-saml.crt
+    owner: keystone
+    group: keystone
+    mode: 0640
+
+- name: install saml signing key
+  template:
+    src: etc/keystone/keystone-saml.pem
+    dest: /etc/keystone/keystone-saml.pem
+    owner: keystone
+    group: keystone
+    mode: 0640
+
+- name: install xmlsec1 command
+  apt: name=xmlsec1 state=present
+  register: result
+  until: result|succeeded
+  retries: 5
+
+- name: setup keystone idp metadata
+  shell: keystone-manage saml_idp_metadata > /etc/keystone/keystone_idp_metadata.xml
+  notify: restart keystone services
+
+- name: set keystone idp metadata permissions
+  file: path=/etc/keystone/keystone_idp_metadata.xml owner=keystone group=keystone mode=0640

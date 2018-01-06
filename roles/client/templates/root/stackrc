@@ -1,0 +1,17 @@
+export OS_IDENTITY_API_VERSION=3
+export OS_PASSWORD={{ secrets.admin_password }}
+export OS_AUTH_URL={{ endpoints.keystonev3.url.internal }}/{{ endpoints.keystonev3.version }}
+export OS_USERNAME=admin
+export OS_PROJECT_NAME=admin
+export OS_TENANT_NAME=admin
+export OS_USER_DOMAIN_NAME=Default
+export OS_PROJECT_DOMAIN_NAME=Default
+export OS_CACERT={{ ssl.cafile }}
+export OS_NO_CACHE=True
+export OS_VOLUME_API_VERSION=2
+# NOTE(mriedem): OS_COMPUTE_API_VERSION is left unspecified. By default the
+# python-novaclient CLI does version negotation and requests the latest
+# microversion available from the server based on the latest version that the
+# installed client currently supports. For this reason, scripts should not be
+# written that rely on the nova CLI using this stackrc environment. This should
+# be purely for operator convenience/usage.

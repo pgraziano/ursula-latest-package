@@ -1,0 +1,9 @@
+---
+dependencies:
+  - role: apt-repos
+    repos:
+      # IPv6 RA requires dnsmasq >= 2.64
+      - repo: 'deb {{ apt_repos.bbg_openstack_ppa.repo }} precise main'
+        key_url: '{{ apt_repos.bbg_openstack_ppa.key_url }}'
+    when: ansible_distribution == "Ubuntu" and
+          ansible_distribution_version == "12.04"

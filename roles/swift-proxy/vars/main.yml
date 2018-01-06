@@ -1,0 +1,3 @@
+---
+memcached:
+  bind_ip: "{{ hostvars[inventory_hostname][primary_interface]['ipv4']['address'] }}"

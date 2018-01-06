@@ -1,0 +1,44 @@
+---
+- name: controller 0 hosts file
+  hosts: controller[0]
+  tasks:
+    - name: add controller node to /etc/hosts
+      lineinfile: dest=/etc/hosts regexp={{ testenv_instance_prefix }}-controller-0
+                  insertafter=EOF
+                  line="127.0.1.1 {{ testenv_instance_prefix }}-controller-0"
+
+- name: controller 1 hosts file
+  hosts: controller[1]
+  tasks:
+    - name: add controller node to /etc/hosts
+      lineinfile: dest=/etc/hosts regexp={{ testenv_instance_prefix }}-controller-1
+                  insertafter=EOF
+                  line="127.0.1.1 {{ testenv_instance_prefix }}-controller-1"
+
+- name: compute 0 hosts file
+  hosts: compute[0]
+  tasks:
+    - name: add compute node to /etc/hosts
+      lineinfile: dest=/etc/hosts regexp={{ testenv_instance_prefix }}-compute-0
+                  insertafter=EOF
+                  line="127.0.1.1 {{ testenv_instance_prefix }}-compute-0"
+
+- name: tasks for all
+  hosts: all
+  serial: 10
+  tasks:
+  - name: Generate en_US locale
+    command: localedef -c -f UTF-8 -i en_US en_US.UTF-8
+
+- name: update interface eth0 configure
+  hosts: all
+  tasks:
+    - name: prevent networkmanager from controlling device eth0
+      lineinfile: dest=/etc/sysconfig/network-scripts/ifcfg-{{ ansible_default_ipv4.interface }} regexp=^NM_CONTROLLED
+                  line="NM_CONTROLLED="no"" state=present
+
+- name: restart network service
+  hosts: all
+  tasks:
+    - name: restart network service
+      service: name=network state=restarted

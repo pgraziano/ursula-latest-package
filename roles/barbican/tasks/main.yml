@@ -1,0 +1,161 @@
+---
+- name: Check if barbican user exists
+  action: shell getent passwd barbican
+  register: barbican_user
+  failed_when: False
+  changed_when: False
+
+- name: barbican user
+  user:
+    name: barbican
+    shell: /bin/false
+    createhome: no
+  when: barbican_user|success
+
+- name: barbican user
+  user:
+    name: barbican
+    comment: barbican
+    shell: /bin/false
+    system: yes
+    home: /nonexistent
+    createhome: no
+  when: barbican_user|failed
+
+- name: /etc/barbican
+  file:
+    dest: /etc/barbican
+    state: directory
+    owner: barbican
+    group: barbican
+
+- name: barbican log dir
+  file:
+    dest: /var/log/barbican
+    state: directory
+    mode: 750
+    owner: barbican
+    group: adm
+
+- name: Change barbican log dir acl
+  acl: name=/var/log/barbican state=present default=yes etype={{ item.etype }} permissions={{ item.permission }}
+  with_items:
+    - etype: user
+      permission: rw
+    - etype: group
+      permission: r
+    - etype: other
+      permission: r
+
+- name: create barbican cache dir
+  file:
+    dest: /var/cache/barbican
+    state: directory
+    mode: 0700
+    owner: barbican
+    group: barbican
+
+- name: set uwsgi path (source install)
+  set_fact: uwsgi_path={{ openstack_source.virtualenv_base }}/barbican/bin/uwsgi
+  when: openstack_install_method == 'source'
+
+- name: set uwsgi path (package install ubuntu)
+  set_fact:
+    uwsgi_path: "{{ openstack_package.virtualenv_base }}/barbican/bin/uwsgi"
+  when: openstack_install_method == 'package' and ursula_os == 'ubuntu'
+
+- name: install barbican uwsgi service (ubuntu)
+  template:
+    src: etc/init/barbican.conf
+    dest: /etc/init/barbican.conf
+    mode: 0644
+  when: ursula_os == 'ubuntu'
+
+- name: Distribute Barbican Config Files
+  template:
+    src: "{{ item }}"
+    dest: /etc/barbican
+    mode: 0644
+    owner: barbican
+    group: barbican
+  with_fileglob: ../templates/etc/barbican/*
+
+- name: Creates barbican uwsgi and httpd directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    mode: 0775
+    owner: barbican
+    group: barbican
+  with_items:
+    - /etc/barbican/uwsgi
+    - /run/uwsgi/barbican
+
+- name: configure barbican admin wsgi
+  template:
+    src: etc/uwsgi/barbican-vassals-api.ini
+    dest: /etc/barbican/uwsgi/barbican-main.ini
+    mode: 0775
+    owner: barbican
+    group: barbican
+
+- name: sync barbican database
+  command: barbican-manage db upgrade
+  when: database_create.changed or force_sync|default('false')|bool
+  become: true
+  become_user: barbican
+  run_once: true
+  changed_when: true
+  notify:
+    - restart barbican services
+  # we want this to always be changed so that it can notify the service restart
+  tags: db-migrate
+
+
+- name: trigger restart on upgrades
+  debug:
+    msg: "Triggering service restart for upgrade"
+  changed_when: True
+  notify: restart barbican services
+  when: code_has_changed | default('False') | bool and
+        upgrade | default('False') | bool
+
+- name: Flush handlers
+  meta: flush_handlers
+
+- name: start barbican
+  service:
+    name: "{{ openstack_meta.barbican.services.barbican_api[ursula_os].name }}"
+    state: started
+    enabled: true
+
+- name: Barbican roles
+  environment:
+    OS_IDENTITY_API_VERSION: 3
+    PYTHONPATH: "{{ basevenv_lib_dir|default(omit) }}"
+  os_keystone_role:
+    name: "{{ item }}"
+    validate_certs: "{{ validate_certs|default(omit) }}"
+    auth:
+      auth_url: "{{ endpoints.keystone.url.internal }}/v3"
+      project_name: admin
+      project_domain_name: default
+      user_domain_name: default
+      username: admin
+      password: "{{ secrets.admin_password }}"
+  with_items: "{{ barbican.roles }}"
+  register: result
+  until: result|succeeded
+  retries: 5
+  delay: 10
+
+- include: monitoring.yml
+  tags:
+    - monitoring
+    - common
+  when: monitoring.enabled|default('True')|bool
+
+- include: logging.yml
+  tags:
+    - logrotate
+    - logging

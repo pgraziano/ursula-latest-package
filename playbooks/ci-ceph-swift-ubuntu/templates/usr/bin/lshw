@@ -1,0 +1,29 @@
+#!/bin/bash
+
+hostname="{{ inventory_hostname }}"
+
+{% raw -%}
+# Note: If there is a need to run the original lshw command,
+# please uncomment the following code,
+# and add an entry for "/usr/bin/lshw.original" in "/etc/sudoers.d/swiftops"
+#if [ "$1" != "-C" -o "$2" != "disk" ]; then
+#  if [ -f /usr/bin/lshw.original ]; then
+#    /usr/bin/lshw.original $@
+#    exit 0
+#  fi
+#fi
+
+# Output additional content for disks
+arr_label=(`lsblk -db |awk 'NR>1{print $1}'`)
+GB=1073741824
+arr_size=(`lsblk -db |awk -v gb=$GB 'NR>1{print $4/gb}'`)
+for((i=0;i<${#arr_label[@]};i++));
+do
+  cat << EOF
+  *-disk:$i
+       logical name: /dev/${arr_label[$i]}
+       serial: ${hostname}-${arr_label[$i]}
+       size: ${arr_size[$i]}GiB
+EOF
+done
+{% endraw %}

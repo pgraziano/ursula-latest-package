@@ -1,0 +1,41 @@
+---
+- name: neutron process checks
+  sensu_process_check: service={{ item }}
+  with_items:
+    - neutron-l3-agent
+    - neutron-dhcp-agent
+    - neutron-metadata-agent
+  notify: restart sensu-client
+
+- name: neutron lbaas process check
+  sensu_process_check: service=neutron-lbaasv2-agent
+  notify: restart sensu-client
+  when: (neutron.lbaas.enabled == "smart" and
+         groups['controller'][0] not in groups['compute']) or
+         neutron.lbaas.enabled|bool
+
+- name: ipchanged process check
+  sensu_process_check: service=/usr/local/sbin/ipchanged
+
+- name: ucarp failover alert
+  sensu_check: name=check-ucarp-failover plugin=check-log.rb use_sudo=true
+               auto_resolve=false interval=20 occurrences=1
+               args="-f {{ ( ursula_os == 'ubuntu' )| ternary('/var/log/syslog', '/var/log/messages') }} -q 'ucarp.+[Ss]witching to state' --silent"
+  notify: restart sensu-client
+
+- name: ucarp processes check
+  sensu_check: name=check-ucarp-procs plugin=check-ucarp-procs.sh use_sudo=true
+  notify: restart sensu-client
+
+- name: l3 router check
+  sensu_check: name=check-l3-router plugin=check-l3-router.sh
+               args="-e {{ ansible_default_ipv4.interface }} -z {{ neutron.monitoring.sensu_checks.check_l3_router.criticality }}"
+               use_sudo=true
+  with_items: "{{ neutron.networks }}"
+  when: item['name'] == 'external' and item['network_type'] == 'local'
+  notify: restart sensu-client
+
+- name: gateway ip duplicate check
+  sensu_check: name=check-gateway-ip-duplicate plugin=check-arping.sh
+               args="-I {{ ansible_default_ipv4.interface }} -d {{ ansible_default_ipv4.gateway }} -z {{ neutron.monitoring.sensu_checks.check_arping.criticality }}"
+  notify: restart sensu-client

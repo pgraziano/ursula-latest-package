@@ -1,0 +1,37 @@
+---
+- name: create swift log files directory
+  file: dest=/var/log/swift state=directory owner={{ (ursula_os == 'rhel') | ternary('root', 'syslog') }} group=adm mode=2750
+
+- name: send swift logs to local files
+  copy: src=etc/rsyslog.d/{{ item }} dest=/etc/rsyslog.d/{{ item }} mode=0644
+  with_items:
+   - 49-swift.conf
+   - 10-swift-udp.conf
+  notify: restart rsyslog
+
+- name: Change swift dir acl
+  acl: name=/var/log/swift state=present default=yes etype={{ item.etype }} permissions={{ item.permission }}
+  with_items:
+    - etype: user
+      permission: rw
+    - etype: group
+      permission: r
+    - etype: other
+      permission: r
+
+- name: set up log rotation for swift
+  logrotate: name=swift path=/var/log/swift/*.log
+  args:
+    options:
+      - daily
+      - missingok
+      - rotate 7
+      - compress
+      - notifempty
+      - nocreate
+      - postrotate
+      - reload rsyslog >/dev/null 2>&1 || true
+      - endscript
+      - delaycompress
+  when: openstack_install_method != 'distro'
+

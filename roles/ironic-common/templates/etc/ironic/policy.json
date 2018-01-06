@@ -1,0 +1,5 @@
+{
+    "admin_api": "role:admin or role:cloud_admin or role:service",
+    "default": "rule:admin_api",
+    "show_password": "!"
+}

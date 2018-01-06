@@ -1,0 +1,20 @@
+---
+- name: restart swift-object service
+  service: name="{{ swift.services.swift_object.name }}" state=restarted
+  when: start_object|bool
+
+- name: restart swift-object-expirer service
+  service: name="{{ swift.services.swift_object_expirer.name }}" state=restarted
+  when: start_object|bool
+
+- name: restart swift-object-services
+  service:
+    name: "{{ item.name }}"
+    state: restarted
+  with_items:
+    - "{{ swift.services.swift_object }}"
+    - "{{ swift.services.swift_object_expirer }}"
+    - "{{ swift.services.swift_object_auditor }}"
+    - "{{ swift.services.swift_object_replicator }}"
+    - "{{ swift.services.swift_object_updater }}"
+  when: start_object|bool

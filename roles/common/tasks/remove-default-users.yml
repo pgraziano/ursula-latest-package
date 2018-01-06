@@ -1,0 +1,6 @@
+---
+# Task to perform some of the miscellanious things 
+# not done by openstack-ansible-security
+- name: remove default system accounts as prescribed by stig
+  user: name={{ item }} state=absent
+  with_items: "{{ common.compliance.rmusers }}" 

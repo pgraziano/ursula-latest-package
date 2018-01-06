@@ -1,0 +1,86 @@
+---
+- name: cinder services
+  environment:
+    PYTHONPATH: "{{ basevenv_lib_dir|default(omit) }}"
+  keystone_service: name={{ item.name }}
+                    type={{ item.type }}
+                    description='{{ item.description }}'
+                    public_url={{ item.public_url }}
+                    internal_url={{ item.internal_url }}
+                    admin_url={{ item.admin_url }}
+                    region=RegionOne
+                    auth_url={{ endpoints.auth_uri }}
+                    tenant_name=admin
+                    login_user=admin
+                    login_password={{ secrets.admin_password }}
+                    insecure={{ insecure|default(omit) }}
+  with_items: "{{ keystone.services }}"
+  when: 
+    - (item.name in ['cinder','cinderv2','cinderv3'])
+  run_once: true
+
+# FIXME: this task should be removed once old service is disabled for all envs
+- name: delete old cinder scheduler/backup service
+  shell: mysql -ucinder -p{{ secrets.db_password }} -e "delete from cinder.services where host = 'ceph' and (topic = 'cinder-scheduler' or topic = 'cinder-backup');"
+  no_log: true
+  run_once: true
+
+- name: create cinder volume types(ceph backend)
+  environment:
+    PYTHONPATH: "{{ basevenv_lib_dir|default(omit) }}"
+  cinder_volume_type: volume_type={{ item.value.volume_type }}
+                      auth_url={{ endpoints.auth_uri }}
+                      login_username=admin
+                      login_password={{ secrets.admin_password }}
+                      login_tenant_name=admin
+                      extra_specs="volume_backend_name={{ item.key }}"
+                      insecure={{ insecure|default(omit) }}
+  when:
+    - ceph.enabled
+    - item.value.enabled
+  with_dict: "{{ ceph_pools | default({}) }}"
+  run_once: true
+
+- name: create cinder volume types(lvm backend)
+  environment:
+    PYTHONPATH: "{{ basevenv_lib_dir|default(omit) }}"
+  cinder_volume_type: volume_type=LVM
+                      auth_url={{ endpoints.auth_uri }}
+                      login_username=admin
+                      login_password={{ secrets.admin_password }}
+                      login_tenant_name=admin
+                      extra_specs="volume_backend_name=lvm"
+                      insecure={{ insecure|default(omit) }}
+  when: lvm.enabled
+  run_once: true
+
+- name: create cinder volume types({{item}} backend)
+  environment:
+    PYTHONPATH: "{{ basevenv_lib_dir|default(omit) }}"
+  cinder_volume_type: volume_type={{item|upper}}
+                      auth_url={{ endpoints.auth_uri }}
+                      login_username=admin
+                      login_password={{ secrets.admin_password }}
+                      login_tenant_name=admin
+                      extra_specs="volume_backend_name={{ item }}"
+                      insecure={{ insecure|default(omit) }}
+  with_items: "{{ v7k.storage_pools }}"
+  when: v7k.enabled
+  run_once: true
+
+- name: create cinder encryption volume types
+  environment:
+    PYTHONPATH: "{{ basevenv_lib_dir|default(omit) }}"
+  cinder_volume_type: volume_type={{ item.volume_type }}
+                      encryption_type=True
+                      provider={{ item.provider }}
+                      cipher={{ item.cipher }}
+                      key_size={{ item.key_size }}
+                      control_location={{ item.control_location }}
+                      auth_url={{ endpoints.auth_uri }}
+                      login_username=admin
+                      login_password={{ secrets.admin_password }}
+                      login_tenant_name=admin
+                      insecure={{ insecure|default(omit) }}
+  with_items: "{{ cinder.encrypted_volume_types }}"
+  run_once: true

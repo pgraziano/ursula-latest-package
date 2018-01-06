@@ -1,0 +1,19 @@
+---
+- name: memcached gem for sensu check
+  gem: name=memcached user_install=no include_dependencies=yes
+       executable=/opt/sensu/embedded/bin/gem
+  environment:
+    PATH: "/opt/sensu/embedded/bin:{{ ansible_env.PATH }}"
+  register: result
+  until: result|succeeded
+  retries: 5
+
+- name: memcached stats check
+  sensu_check: name=memcached-stats plugin=check-memcached-stats.rb
+               args='--host {{ primary_ip }} --criticality {{ memcached.monitoring.sensu_checks.memcached_stats.criticality }}'
+  notify: restart sensu-client
+
+- name: memcached graphite check
+  sensu_check: name=memcached-graphite plugin=memcached-graphite.rb
+               args='--host {{ primary_ip }} --scheme {{ monitoring.graphite.cluster_prefix }}'
+  notify: restart sensu-client

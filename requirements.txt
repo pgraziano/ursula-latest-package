@@ -1,0 +1,12 @@
+tox
+pep8
+oslo.utils
+shade>=1.7.0
+ansible>=2.1.0.0,<3,<=2.1.3
+python-novaclient
+python-glanceclient
+python-cinderclient
+python-neutronclient
+python-keystoneclient
+python-openstackclient
+-e git://github.com/blueboxgroup/ursula-cli.git@master#egg=ursula-cli

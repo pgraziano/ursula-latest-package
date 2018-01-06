@@ -1,0 +1,245 @@
+---
+
+# This playbook is used to meet the ursula 3.1.0 upgrade pre-conditions for
+# cinder service. In this playbook following configurations will be adjusted to
+# enable cinder for multi-backend support.
+#
+# 1: Some previous versions of ursula configured cinder service based on host it
+# was running on. Since we are using Ceph for cinder backend, cinder service must
+# be configured to unique host (i.e host=ceph) to make cinder services HA.
+#
+# 2: Adjust cinder backend name from rbd_volumes to new name based on the ceph backend type.
+#    - rbd_ssd
+#    - rbd_hybrid
+#
+# 3: Create a cinder volume_type based on backend name(set as extra_specs) and
+#    set it as a default. Also adjust existing volumes to this default volume_type.
+#    - CEPH_SSD
+#    - CEPH_HYBRID
+#
+
+- name: adjust cinder unique host and cinder backend for multi-backend support
+  hosts: cinder_volume
+  any_errors_fatal: true
+  max_fail_percentage: 1
+  gather_facts: false
+  environment: "{{ env_vars|default({}) }}"
+  vars:
+    date_time: "{{ lookup('pipe', 'date +%Y%m%d-%H%M%S') }}"
+    set_cinder_host: false
+    update_cinder_backend: false
+    set_default_volume_type: false
+    legacy_cinder_backend_name: rbd_volumes
+
+  roles:
+    - ../roles/endpoints
+
+  pre_tasks:
+    - name: fail if cinder.common_volume_name is defined
+      fail: msg="all.yml must not contain cinder.common_volume_name attribute."
+      when: cinder.common_volume_name is defined
+      run_once: true
+
+    - name: fail if ceph is not enabled
+      fail: msg="Ceph is not enabled for this cluster."
+      when: not ceph.enabled|default('False')|bool
+      run_once: true
+
+    - name: fail if cinder is not enabled
+      fail: msg="Cinder is not enabled for this cluster."
+      when: not cinder.enabled|default('False')|bool
+      run_once: true
+
+    # make sure only one osd host group is configured
+    # because we detect ceph cluster is ssd or hybri according to osd host group
+    - name: fail if more than one osd host groups are configured
+      fail: msg="Only one osd host group should be configured"
+      run_once: true
+      when:
+        - groups['ceph_osds_hybrid'] |default([]) |length > 0
+        - groups['ceph_osds_ssd'] |default([]) |length > 0
+
+    - name: dump cinder db
+      mysql_db:
+        name: cinder
+        state: dump
+        target: /backup/cinder-preupgrade.{{ date_time }}.sql
+      run_once: true
+      delegate_to: "{{ groups['db'][0] }}"
+      changed_when: false
+
+  tasks:
+  - name: gather facts for adjusting cinder service host
+    command: grep '^host \?= \?ceph' /etc/cinder/cinder.conf
+    failed_when: false
+    changed_when: false
+    register: check_cinder_host
+
+  - name: gather facts for adjusting cinder backend name
+    command: grep '^enabled_backends \?= \?rbd_volumes' /etc/cinder/cinder.conf
+    failed_when: false
+    changed_when: false
+    register: check_cinder_backend
+
+  - name: gather facts for existing default_volume_type
+    command: grep '^default_volume_type' /etc/cinder/cinder.conf
+    failed_when: false
+    changed_when: false
+    register: check_default_volume_type
+
+  - name: set fact for set_cinder_host
+    set_fact:
+      set_cinder_host: True
+    when: check_cinder_host.rc != 0
+
+  - name: set fact for update_cinder_backend
+    set_fact:
+      update_cinder_backend: True
+    when: check_cinder_backend.rc == 0
+
+  - name: set fact for set_default_volume_type
+    set_fact:
+      set_default_volume_type: True
+    when: check_default_volume_type.rc != 0
+
+  - name: set fact for hybrid cinder backend
+    set_fact:
+      cinder_backend_name: rbd_hybrid
+      default_volume_type: CEPH_HYBRID
+    when: groups['ceph_osds_hybrid'] |default([]) |length > 0
+
+  - name: set fact for ssd cinder backend
+    set_fact:
+      cinder_backend_name: rbd_ssd
+      default_volume_type: CEPH_SSD
+    when: groups['ceph_osds_ssd'] |default([]) |length > 0
+
+  - name: stop all cinder services
+    command: echo "stopping all cinder services"
+    when: set_cinder_host or update_cinder_backend
+    notify:
+      - stop cinder services
+      - stop cinder backup service
+
+  - meta: flush_handlers
+
+  - name: update cinder db
+    command: mysql -e "
+             DELETE cinder.services FROM cinder.services;
+             UPDATE cinder.volumes SET host='ceph@{{ cinder_backend_name }}' WHERE host is not NULL;
+             UPDATE cinder.backups SET host='ceph' WHERE host is not NULL;"
+    when: set_cinder_host or update_cinder_backend
+    run_once: true
+    notify:
+      - restart cinder services
+      - restart cinder backup service
+
+  - name: set cinder service host to ceph in cinder.conf
+    lineinfile: dest=/etc/cinder/cinder.conf
+                insertafter='^\[DEFAULT\]'
+                line='host = ceph'
+    when: set_cinder_host
+    notify:
+      - restart cinder services
+      - restart cinder backup service
+
+  - name: change cinder enabled_backends name in cinder.conf
+    replace:
+      dest: /etc/cinder/cinder.conf
+      regexp: "{{ item.regexp }}"
+      replace: "{{ item.replace }}"
+    with_items:
+      - { regexp: '^enabled_backends = {{ legacy_cinder_backend_name }}', replace: 'enabled_backends = {{ cinder_backend_name }}' }
+      - { regexp: '^\[{{ legacy_cinder_backend_name }}\]', replace: '[{{ cinder_backend_name }}]' }
+      - { regexp: '^volume_backend_name = {{ legacy_cinder_backend_name }}', replace: 'volume_backend_name = {{ cinder_backend_name }}' }
+    when: update_cinder_backend
+    notify:
+      - restart cinder services
+      - restart cinder backup service
+
+  - name: set default_volume_type in cinder.conf
+    lineinfile: dest=/etc/cinder/cinder.conf
+                insertafter='^\[DEFAULT\]'
+                line='default_volume_type = {{ default_volume_type }}'
+    when: set_default_volume_type
+    notify:
+      - restart cinder services
+      - restart cinder backup service
+
+  - meta: flush_handlers
+
+  - name: make sure cinder api,volume work
+    shell: . /root/stackrc ; cinder list
+    register: result
+    until: result | succeeded
+    retries: 12
+    run_once: true
+
+  - name: create cinder volume type
+    cinder_volume_type:
+      volume_type: "{{ default_volume_type }}"
+      auth_url: "{{ endpoints.auth_uri }}"
+      login_username: admin
+      login_password: "{{ secrets.admin_password }}"
+      login_tenant_name: admin
+      extra_specs: "volume_backend_name={{ cinder_backend_name }}"
+    when: set_default_volume_type
+    run_once: true
+
+  - name: Get default volume_type id
+    shell: . /root/stackrc; openstack volume type show {{ default_volume_type }} -c id -f value
+    when: set_default_volume_type
+    run_once: true
+    register: default_volume_type_id
+
+  - name: update cinder volumes, snapshots with volume_type_id (default) in db
+    command: mysql -e "
+             UPDATE cinder.volumes SET volume_type_id='{{ default_volume_type_id.stdout }}' WHERE volume_type_id IS NULL;
+             UPDATE cinder.snapshots SET volume_type_id='{{ default_volume_type_id.stdout }}' WHERE volume_type_id IS NULL;"
+    when:
+      - set_default_volume_type
+      - default_volume_type_id.rc == 0
+    run_once: true
+
+  handlers:
+  - name: stop cinder services
+    service:
+      name: "{{ item }}"
+      state: stopped
+      must_exist: false
+    with_items: ['cinder-api', 'cinder-scheduler', 'cinder-volume']
+    when: set_cinder_host or update_cinder_backend
+
+  - name: stop cinder backup service
+    service:
+      name: cinder-backup
+      state: stopped
+      must_exist: false
+    when:
+      - swift.enabled|default('False')|bool
+      - (set_cinder_host or update_cinder_backend)
+
+  - name: restart cinder services
+    service:
+      name: "{{ item[1] }}"
+      state: restarted
+      must_exist: false
+    run_once: True
+    delegate_to: "{{ item[0] }}"
+    when: set_cinder_host or update_cinder_backend
+    with_nested:
+      - "{{ play_hosts }}"
+      - ['cinder-api', 'cinder-scheduler', 'cinder-volume']
+
+  - name: restart cinder backup service
+    service:
+      name: cinder-backup
+      state: restarted
+      must_exist: false
+    run_once: True
+    delegate_to: "{{ item }}"
+    when:
+      - swift.enabled|default('False')|bool
+      - (set_cinder_host or update_cinder_backend)
+    with_items:
+      - "{{ play_hosts }}"

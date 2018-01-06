@@ -1,0 +1,54 @@
+---
+- name: remove keystone eventlet check
+  sensu_process_check: service=keystone-all state=absent
+  notify: restart sensu-client
+
+- name: remove simple keystone process check
+  sensu_process_check: service=uwsgi state=absent
+  notify: restart sensu-client
+
+- name: keystone process check
+  sensu_check:
+    name: keystone_process
+    plugin: check-procs.rb
+    args: "-p 'uwsgi.*keystone' -w 15 -c 30 -W 1 -C 1"
+  notify: restart sensu-client
+
+- name: shibboleth process check
+  sensu_process_check: service=shibd
+  notify: restart sensu-client
+  when: keystone.federation.enabled|bool and keystone.federation.sp.saml.enabled|bool
+
+- name: keystone-api check
+  sensu_check: name=check-keystone-api plugin=check-os-api.rb
+               args="--service keystone --criticality {{ keystone.monitoring.sensu_checks.check_keystone_api.criticality }}"
+               only_on_ip="{{ undercloud_floating_ip | default(floating_ip) }}"
+  notify: restart sensu-client
+
+- name: keystone token buildup check
+  sensu_check:
+    name: check-keystone-expired-tokens
+    plugin: check-keystone-expired-tokens.rb
+    interval: 3600
+    use_sudo: true
+  notify: restart sensu-client
+
+- name: keystone metrics
+  template: src=etc/collectd/plugins/keystone.conf dest=/etc/collectd/plugins/keystone.conf
+  notify: restart collectd
+  when: collectd is defined and collectd.enabled|bool
+  tags: collectd
+
+- name: keystone sla metrics
+  sensu_metrics_check: name=keystone-sla-metrics plugin=metrics-os-api.py
+                       args='-S keystone --scheme {{ monitoring.graphite.cluster_prefix }}'
+                       only_on_ip="{{ undercloud_floating_ip | default(floating_ip) }}"
+  notify: restart sensu-client
+
+- name: keystone identity metrics
+  sensu_metrics_check:
+    name: identity-metrics
+    plugin: metrics-keystone.py
+    args: "--scheme {{ monitoring.graphite.cluster_prefix }}"
+    only_on_ip: "{{ undercloud_floating_ip | default(floating_ip) }}"
+  notify: restart sensu-client

@@ -1,0 +1,51 @@
+---
+- name: update apt index
+  apt: update_cache=yes cache_valid_time=3600
+  when: ansible_distribution == 'Ubuntu'
+  register: result
+  until: result|succeeded
+  retries: 5
+
+- name: update SSL
+  package: name={{ item }} state=latest
+  with_items:
+  - libssl1.0.0
+  - openssl
+  when: ansible_distribution == 'Ubuntu'
+
+  notify: reload haproxy
+  register: result
+  until: result|succeeded
+  retries: 5
+
+- name: update python modules for true ssl context
+  pip: name={{ item }} state=latest
+  with_items:
+    - pyopenssl==17.2.0
+    - pyasn1
+    - ndg-httpsclient
+  register: result
+  until: result|succeeded
+  retries: 5
+
+- name: updating pyopenssl separately to preserve functionality
+  pip: name=pyopenssl version=17.2.0 state=present
+  register: result
+  until: result|succeeded
+  retries: 5
+
+- include: CVE-2015-0235.yml
+  when: ansible_architecture != "ppc64le"
+  tags: CVE-2015-0235
+
+- name: update dpkg for CVE-2015-0860
+  package: name={{ item }} state=latest
+  with_items:
+  - dpkg
+  tags: CVE-2015-0860
+  register: result
+  until: result|succeeded
+  retries: 5
+
+- include: CVE-2015-7547.yml
+  tags: CVE-2015-7547

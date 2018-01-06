@@ -1,0 +1,24 @@
+---
+- name: set ursula_os if undefined 
+  set_fact:
+    ursula_os: "{{ ansible_distribution | regex_replace('RedHat|CentOS', 'rhel')|lower }}"
+  when: ( ursula_os is undefined ) and
+        ( ansible_distribution in ['CentOS', 'RedHat'] or ansible_distribution == 'Ubuntu')
+
+- name: validate ursula_os is a supported operating system and matches host system 
+  fail: msg="ursula_os does not match host operating system or {{ ursula_os }} is not a supported operating system (must be rhel or ubuntu)"
+  when: (ursula_os is undefined) or ( ursula_os not in ['rhel', 'ubuntu'] or
+                                     ursula_os != "{{ ansible_distribution | regex_replace('RedHat|CentOS', 'rhel')|lower }}")
+
+- name: set ssh_service fact for ubuntu
+  set_fact:
+    ssh_service: ssh
+  when: ursula_os == 'ubuntu'
+
+- name: set ssh_service fact for rhel
+  set_fact:
+    ssh_service: sshd
+  when: ursula_os == 'rhel'
+
+- include: check_items.yml
+  tags: ['precheck']

@@ -1,0 +1,105 @@
+---
+- name: openstack creds
+  template: src=root/stackrc dest=/root/stackrc
+  when: client.write_stackrc|bool
+
+- name: install required packages for clients
+  package:
+    name: "{{ item }}"
+    state: present
+  with_items: "{{ client.dep_pkgs }}"
+  register: result
+  until: result|succeeded
+  retries: 5
+
+- block:
+  - name: make sure /opt/stack/ exists
+    file: dest=/opt/stack state=directory
+
+  - name: write constraints file
+    copy:
+      src: ../../openstack-source/files/constraints.txt
+      dest: /opt/stack/constraints.txt
+      force: true
+    when: client.upper_constraints == None or client.upper_constraints == ""
+
+  - name: get constraints file
+    get_url:
+      url: "{{ client.upper_constraints }}"
+      dest: /opt/stack/constraints.txt
+      force: true
+    when:
+      - client.upper_constraints != None
+      - client.upper_constraints != ""
+
+  - name: upgrade system setuptools using upper_contraints
+    pip:
+      name: setuptools
+      extra_args: "-c /opt/stack/constraints.txt --upgrade"
+    register: result
+    until: result|succeeded
+    retries: 5
+
+  - name: install openstack clients (not distro using upper_contraints)
+    pip: name={{ item }} extra_args='-c /opt/stack/constraints.txt'
+    with_items: "{{ client.names['pip_pkgs'] }}"
+    when: client.use_constraints|bool
+    notify:
+      - update ca certs
+    register: result
+    until: result|succeeded
+    retries: 5
+
+  - name: install python-openstackclient (not distro without using upper_contraints)
+    pip: name={{ item }}
+    with_items: "{{ client.names['pip_pkgs'] }}"
+    when: not client.use_constraints|bool
+    notify:
+      - update ca certs
+    register: result
+    until: result|succeeded
+    retries: 5
+  when:
+    - openstack_install_method != 'distro'
+
+- name: install openstack clients (distro)
+  package:
+    name: "{{ item }}"
+    state: present
+  with_items: "{{ client.names['yum_pkgs'] }}"
+  register: result
+  until: result|succeeded
+  retries: 5
+  when: ursula_os == 'rhel' and openstack_install_method == 'distro'
+
+- name: install openstack clients (basevenv)
+  pip: name={{ item }} virtualenv="{{ basevenv | default('/opt/openstack/base') }}"
+  with_items: "{{ client.names['pip_pkgs'] }}"
+  notify:
+    - update ca certs
+  register: result
+  until: result|succeeded
+  retries: 5
+
+- block:
+  - name: fix ssl certs for requests for keystone-client on trusty
+    file: src=/etc/ssl/certs/ca-certificates.crt
+          dest=/usr/local/lib/python2.7/dist-packages/requests/cacert.pem
+          owner=root
+          mode=0644 state=link force=yes
+
+  - name: check if certifi exists
+    stat: path=/usr/local/lib/python2.7/dist-packages/certifi
+    register: stat_certifi
+
+  - name: fix ssl certs for certifi for keystone-client on trusty
+    file: src=/etc/ssl/certs/ca-certificates.crt
+          dest=/usr/local/lib/python2.7/dist-packages/certifi/cacert.pem
+          owner=root
+          mode=0644 state=link force=yes
+    when: stat_certifi.stat.isdir is defined and stat_certifi.stat.isdir
+  when: ansible_distribution_version == "14.04"
+
+- name: migrate neutron services script
+  template: src=usr/local/bin/migrate_neutron_services
+            dest=/usr/local/bin/migrate_neutron_services mode=0755

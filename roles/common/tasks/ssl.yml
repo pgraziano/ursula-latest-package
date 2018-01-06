@@ -1,0 +1,77 @@
+---
+- block:
+  - name: custom CA cert directory
+    file: dest=/usr/local/share/ca-certificates state=directory
+
+  - name: (possibly self-signed) ssl cert
+    template: src=openstack.cacrt
+              dest=/usr/local/share/ca-certificates/{{ endpoints.main }}.crt
+    notify: refresh CAs
+    when: ssl.cacrt|default(None)
+
+  - name: Install any additional CA certificates
+    copy:
+      content: "{{ item.content | default(omit) }}"
+      dest: "/usr/local/share/ca-certificates/{{ item.name }}.crt"
+      src: "{{ item.src | default(omit) }}"
+    with_items: "{{ ssl.extracacerts | default([]) }}"
+    notify: refresh CAs
+  when: ursula_os == 'ubuntu'
+
+- block:
+  - name: custom CA cert directory
+    file: dest=/etc/pki/ca-trust/source/anchors state=directory
+
+  - name: (possibly self-signed) ssl ca cert
+    template: src=openstack.cacrt
+              dest=/etc/pki/ca-trust/source/anchors/{{ endpoints.main }}.pem
+    notify: refresh rhel CAs
+    when: ssl.cacrt|default(None)
+
+  - name: Install any additional CA certificates
+    copy:
+      content: "{{ item.content | default(omit) }}"
+      dest: "/etc/pki/ca-trust/source/anchors/{{ item.name }}.pem"
+      src: "{{ item.src | default(omit) }}"
+    with_items: "{{ ssl.extracacerts | default([]) }}"
+    notify: refresh rhel CAs
+  when: ursula_os == 'rhel'
+
+# ugly hack: some python http libs don't honor the system ca-certs, and ship with
+# their own list, instead.
+# pre-install these client libs, and force them to use the system cert list.
+- name: force our ssl cert for python libs (requests)
+  file: src={{ ssl.cafile }} dest="{{ basevenv_lib_dir }}/requests/cacert.pem"
+        owner=root mode=0644
+        state=link force=yes
+
+- name: check if certifi exists
+  stat: path="{{ basevenv_lib_dir }}/certifi"
+  register: stat_certifi
+
+- name: force our ssl cert for python libs (certifi)
+  file: src={{ ssl.cafile }} dest="{{ basevenv_lib_dir }}/certifi/cacert.pem"
+        owner=root mode=0644
+        state=link force=yes
+  when: stat_certifi.stat.isdir is defined and stat_certifi.stat.isdir
+
+- name: ssl directory
+  file: dest=/opt/stack/ssl state=directory
+
+- name: install openstack SSL cert
+  template:
+    src: openstack.crt
+    dest: /opt/stack/ssl/openstack.crt
+    mode: 0644
+  tags:
+    - cert
+
+- meta: flush_handlers
+
+- name: update ca certificates
+  command: update-ca-certificates
+  when: ursula_os == 'ubuntu'
+
+- name: update ca certificates (rhel)
+  command: update-ca-trust
+  when: ursula_os == 'rhel'

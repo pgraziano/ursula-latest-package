@@ -1,0 +1,12 @@
+# NOTE we are only using this to manage the mangle table
+# The filter table is managed by ufw-framework and the NAT table is manged by /etc/network/interfaces
+*mangle
+:PREROUTING ACCEPT [0:0]
+:INPUT ACCEPT [0:0]
+:FORWARD ACCEPT [0:0]
+:OUTPUT ACCEPT [0:0]
+:POSTROUTING ACCEPT [0:0]
+
+-A POSTROUTING -p udp --dport bootpc -j CHECKSUM --checksum-fill
+
+COMMIT

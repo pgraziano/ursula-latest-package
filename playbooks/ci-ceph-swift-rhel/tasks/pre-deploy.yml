@@ -1,0 +1,67 @@
+---
+- name: umount ephemeral disk on ceph_osds
+  hosts: ceph_osds
+  tasks:
+    - name: umount ephemeral disk on ceph_osds
+      shell: umount /dev/{{ item }}
+      with_items: "{{ ceph.disks }}"
+      failed_when: False
+
+- name: "register swift nodes with rhn"
+  hosts: swiftnode
+  roles:
+    - ../roles/rhn-subscription
+
+- name: "install lshw package on swiftnodes"
+  hosts: swiftnode
+  tasks:
+    - name: install lshw
+      yum:
+        name: lshw
+        state: present
+
+- name: umount ephemeral disk on swiftnode
+  hosts: swiftnode
+  tasks:
+    - name: umount ephemeral disk on swiftnode
+      shell: umount /dev/{{ item.disk }}
+      with_items: "{{ swift.disks }}"
+      failed_when: False
+
+- name: create new partition table for ephemeral disk on swiftnode
+  hosts: swiftnode
+  tasks:
+    - name: create new msdos partition table for ephemeral disk
+      shell: parted /dev/{{ item.disk }} --script mklabel msdos
+      with_items: "{{ swift.disks }}"
+
+- name: deploy fake lshw file on swiftnode to get disk info
+  hosts: swiftnode
+  tasks:
+    - name: rename the original /usr/bin/lshw
+      command: mv /usr/sbin/lshw /usr/sbin/lshw.original
+
+    - name: deploy fake lshw file /usr/sbin/lshw
+      template: src=../templates/usr/sbin/lshw
+                dest=/usr/sbin/lshw
+                owner=root group=root mode=0755
+
+- name: tasks for all
+  hosts: all
+  serial: 10
+  tasks:
+  - name: Generate en_US locale
+    command: localedef -c -f UTF-8 -i en_US en_US.UTF-8
+
+- name: update interface eth0 configure
+  hosts: all
+  tasks:
+    - name: prevent networkmanager from controlling device eth0
+      lineinfile: dest=/etc/sysconfig/network-scripts/ifcfg-{{ ansible_default_ipv4.interface }} regexp=^NM_CONTROLLED
+                  line="NM_CONTROLLED="no"" state=present
+
+- name: restart network service
+  hosts: all
+  tasks:
+    - name: restart network service
+      service: name=network state=restarted

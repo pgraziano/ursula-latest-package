@@ -1,0 +1,10 @@
+---
+- name: drop our ring configuration
+  copy: src={{ swift_ring.ring_definition_file }} owner=swiftops group=swiftops
+        dest={{ swift_ring.outdir }}/ring_definition.yml mode=644 backup=yes
+  notify:
+    - setup swift rings - bootstrap
+    - setup swift rings osp - bootstrap
+
+- name: flush handlers
+  meta: flush_handlers

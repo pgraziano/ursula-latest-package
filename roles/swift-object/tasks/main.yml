@@ -1,0 +1,88 @@
+---
+- name: install xfsprogs
+  apt: pkg=xfsprogs
+  register: result
+  until: result|succeeded
+  retries: 5
+  when: ursula_os == 'ubuntu'
+
+- name: install xfsprogs
+  yum: pkg=xfsprogs
+  when: ursula_os == 'rhel'
+
+- name: swift-object service scripts
+  upstart_service:
+      name: "{{ item.name }}"
+      user: "{{ item.user }}"
+      cmd:  "{{ item.cmd }}"
+      args: "{{ item.config_files }}"
+  with_items:
+    - "{{ swift.services.swift_object }}"
+    - "{{ swift.services.swift_object_expirer }}"
+    - "{{ swift.services.swift_object_auditor }}"
+    - "{{ swift.services.swift_object_replicator }}"
+    - "{{ swift.services.swift_object_updater }}"
+  when: ursula_os == 'ubuntu'
+
+- stat: path=/etc/swift/object.ring.gz
+  register: object_ring
+
+- set_fact: start_object={{ object_ring.stat.exists }}
+
+- name: object-server config
+  template: src=etc/swift/object-server.conf dest=/etc/swift/object-server.conf
+            owner=swift group=swift mode=0640
+  notify: restart swift-object service
+
+- name: object-expirer config
+  template: src=etc/swift/object-expirer.conf dest=/etc/swift/object-expirer.conf
+            owner=swift group=swift mode=0640
+  notify: restart swift-object-expirer service
+
+- name: trigger restart on upgrades
+  debug:
+    msg: "Triggering service restart for upgrade"
+  changed_when: True
+  notify: restart swift-object-services
+  when: code_has_changed | default('False') | bool and
+        upgrade | default('False') | bool
+
+- meta: flush_handlers
+
+- name: configure disks
+  swift_disk: dev={{ item.disk|default(omit) }}
+              partition_path={{ item.partition_path|default(omit) }}
+              mount_point={{ item.mount_point|default(omit) }}
+              make_label={{ item.make_label|default(False) }}
+  with_items: "{{ swift.disks }}"
+
+- name: configure shared ssd partition if it exist
+  swift_disk: partition_path={{ swift.os_shared_partition }}
+              make_label=False
+  when: swift.os_shared_partition is defined
+
+- name: configure swift-drive-audit
+  template: src=etc/swift/drive-audit.conf dest=/etc/swift/drive-audit.conf
+            owner=swift group=swift mode=0640
+
+- name: add swift-drive-audit to cron.hourly
+  template: src=usr/local/bin/swift-drive-auditor mode=0755
+            dest=/usr/local/bin/swift-drive-auditor owner=root group=root
+
+- name: apply the label for selinux to /srv/node/* dirs
+  command: restorecon -R -v /srv
+  register: result
+  changed_when: "'restorecon reset' in result.stdout and result.rc == 0"
+  failed_when: "result.rc != 0"
+  when: ansible_distribution == 'RedHat'
+  tags: selinux
+
+- name: start swift-object services
+  service: name={{ item.name }} state=started enabled=true
+  with_items:
+    - "{{ swift.services.swift_object }}"
+    - "{{ swift.services.swift_object_expirer }}"
+    - "{{ swift.services.swift_object_auditor }}"
+    - "{{ swift.services.swift_object_replicator }}"
+    - "{{ swift.services.swift_object_updater }}"
+  when: start_object|bool

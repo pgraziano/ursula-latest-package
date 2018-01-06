@@ -1,0 +1,11 @@
+---
+- name: apache2 process check
+  sensu_process_check: 
+    service: "{{ ( ursula_os == 'ubuntu' )| ternary('apache2', 'httpd') }}"
+  notify: restart sensu-client
+
+- name: dashboard port check
+  sensu_check: name=check-dashboard-clear-port-redirects plugin=check-http.rb
+               args='-u http://localhost/ -r -z {{ horizon.monitoring.sensu_checks.check_http.criticality }}'
+  when: haproxy.enabled|bool
+  notify: restart sensu-client

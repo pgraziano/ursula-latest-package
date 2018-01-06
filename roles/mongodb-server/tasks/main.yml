@@ -1,0 +1,16 @@
+---
+- include: primary.yml
+  when: inventory_hostname in groups['mongo_db'][0]
+
+- name: add mongodb secondary servers to replica set
+  mongodb_replication:
+    login_host: "{{ mongodb.endpoint_addr }}"
+    login_port: "{{ mongodb.port }}"
+    login_user: "admin"
+    login_password: "{{ mongodb.db_password }}"
+    replica_set: "{{ mongodb.replica_name }}"
+    host_name: "{{ primary_ip }}"
+    host_port: "{{ mongodb.port }}"
+    host_type: "replica"
+  when: inventory_hostname not in groups['mongo_db'][0] and inventory_hostname in groups['mongo_db']
+  no_log: true

@@ -1,0 +1,1 @@
+{{ logging.forward.tls.ca_cert }}

@@ -1,0 +1,147 @@
+---
+- name: install common neutron packages
+  package: name=bridge-utils
+  register: result
+  until: result|succeeded
+  retries: 5
+
+- name: install common neutron packages
+  package: name=vlan
+  when: ursula_os == 'ubuntu'
+  register: result
+  until: result|succeeded
+  retries: 5
+
+
+- name: unload openvswitch if present
+  modprobe: name=openvswitch state=absent
+
+- name: blacklist openvswitch
+  template: dest=/etc/modprobe.d/blacklist-openvswitch.conf
+            src=etc/modprobe.d/blacklist-openvswitch.conf
+            mode=0644
+            owner=root
+            group=root
+
+- name: configure VXLAN to use IANA assigned port 4789
+  copy: content="options vxlan udp_port=4789"
+        dest=/etc/modprobe.d/vxlan-port.conf owner=root group=root mode=0644
+
+- name: check if neutron user exists
+  shell: getent passwd neutron
+  register: neutron_user
+  failed_when: False
+  changed_when: False
+
+- name: neutron user
+  user: name=neutron shell=/bin/false createhome=no
+  when: neutron_user|success
+
+- name: neutron user
+  user: name=neutron comment=neutron shell=/bin/false system=yes
+        home=/nonexistent createhome=no
+  when: not neutron_user|success
+
+- name: neutron sudoer
+  template: src=etc/sudoers.d/neutron
+            dest=/etc/sudoers.d/neutron
+            owner=root
+            group=root
+            mode=0440
+
+- name: neutron etc directories
+  file:
+    dest: "{{ item }}"
+    state: directory
+  with_items:
+    - /etc/neutron/services/loadbalancer/haproxy
+    - /etc/neutron/rootwrap-ursula.d
+
+- name: neutron libdir
+  file: dest=/var/lib/neutron state=directory owner=neutron
+
+- name: neutron cache dir
+  file: dest=/var/cache/neutron state=directory mode=0700
+        owner=neutron group=neutron
+
+- name: neutron log dir
+  file: dest=/var/log/neutron state=directory mode=2750
+        owner=neutron group=adm
+
+- name: Change neutron log dir acl
+  acl: name=/var/log/neutron state=present default=yes etype={{ item.etype }} permissions={{ item.permission }}
+  with_items:
+    - etype: user
+      permission: rw
+    - etype: group
+      permission: r
+    - etype: other
+      permission: r
+
+
+- name: neutron config
+  template: src={{ item }} dest=/etc/neutron mode=0640
+            owner=root group=neutron
+  with_fileglob: ../templates/etc/neutron/*
+  notify:
+     - restart neutron services
+
+- name: copy policy files to openstack-dashboard
+  template:
+    src: "etc/neutron/policy.json"
+    dest: "/etc/openstack-dashboard/neutron_policy.json"
+    owner: "root"
+    group: "{{ openstack_meta.apache[ursula_os].group }}"
+    mode: 0640
+  when: inventory_hostname in groups['controller']
+
+- name: ursula rootwrap filters
+  template:
+    src: etc/neutron/rootwrap-ursula.d/ursula.filters
+    dest: /etc/neutron/rootwrap-ursula.d/
+    mode: 0640
+    owner: root
+    group: root
+
+- name: error for unknown plugin
+  fail: msg="Invalid Neutron plugin, must be ml2"
+  when: neutron.plugin != 'ml2'
+
+- name: ml2 plugin dir
+  file: dest=/etc/neutron/plugins/ml2 state=directory
+
+- name: ml2 config
+  template: src=etc/neutron/plugins/ml2/ml2_plugin.ini
+            dest=/etc/neutron/plugins/ml2/ml2_plugin.ini
+            mode=0644
+  notify:
+    - restart neutron services
+
+- name: neutron stop all script
+  template: src=usr/local/bin/neutron-stop-all
+            dest=/usr/local/bin/neutron-stop-all
+            mode=0755
+
+- name: neutron start all script
+  template: src=usr/local/bin/neutron-start-all
+            dest=/usr/local/bin/neutron-start-all
+            mode=0755
+
+- name: neutron restart all script
+  template: src=usr/local/bin/neutron-restart-all
+            dest=/usr/local/bin/neutron-restart-all
+            mode=0755
+
+- name: neutron reset script
+  template: src=usr/local/bin/neutron-reset
+            dest=/usr/local/bin/neutron-reset
+            mode=0755
+
+- name: neutron vxlan reset
+  command: /usr/local/bin/neutron-reset -d vxlan
+  when: neutron.vxlan_reset.enabled|default('False')|bool
+
+- include: logging.yml
+  tags:
+    - logrotate
+    - logging

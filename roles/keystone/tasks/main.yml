@@ -1,0 +1,215 @@
+---
+- name: check if keystone user exists
+  action: shell getent passwd keystone
+  register: keystone_user
+  failed_when: False
+  changed_when: False
+
+- name: keystone user
+  user: name=keystone shell=/bin/false createhome=no
+  when: keystone_user|success
+
+- name: keystone user
+  user: name=keystone comment=keystone shell=/bin/false system=yes
+        home=/nonexistent createhome=no
+  when: not keystone_user|success
+
+- name: keystone config dir
+  file: dest=/etc/keystone state=directory
+
+- name: keystone log dir
+  file: dest=/var/log/keystone state=directory mode=2750 owner=keystone
+        group=adm
+
+- name: Change keystone log dir acl
+  acl: name=/var/log/keystone state=present default=yes etype={{ item.etype }} permissions={{ item.permission }}
+  with_items:
+    - etype: user
+      permission: rw
+    - etype: group
+      permission: r
+    - etype: other
+      permission: r
+
+- name: set uwsgi path (source install)
+  set_fact: keystone_uwsgi_path={{ openstack_source.virtualenv_base }}/keystone/bin/uwsgi
+  when: openstack_install_method == 'source'
+
+- name: set uwsgi path (package install ubuntu)
+  set_fact:
+    keystone_uwsgi_path: "{{ openstack_package.virtualenv_base }}/keystone/bin/uwsgi"
+  when: openstack_install_method == 'package' and ursula_os == 'ubuntu'
+
+- name: set uwsgi path (package install rhel)
+  set_fact:
+    keystone_uwsgi_path: "/usr/sbin/uwsgi"
+  when: openstack_install_method == 'distro'
+
+- name: install keystone uwsgi service (ubuntu)
+  template: src=etc/init/keystone.conf
+            dest=/etc/init/keystone.conf mode=0644
+  when: ursula_os == 'ubuntu'
+
+- block:
+  - name: install keystone uwsgi service (rhel)
+    systemd_service:
+      name: "{{ item.name }}"
+      description: "{{ item.desc }}"
+      cmd: "{{ keystone_uwsgi_path }}"
+      args: "{{ item.args }}"
+      user: "{{ item.user }}"
+      type: "{{ item.type }}"
+      notify_access: "{{ item.notify_access }}"
+      restart: "{{ item.restart }}"
+      kill_signal: "SIGINT"
+    with_items:
+      - "{{ openstack_meta.keystone.services.keystone_api[ursula_os] }}"
+
+  - name: Configure tmpfiles.d for creation of /run/uwsgi/keystone on reboot
+    template:
+      src: usr/lib/tmpfiles.d/openstack-keystone.conf
+      dest: /usr/lib/tmpfiles.d/openstack-keystone.conf
+      mode: 0644
+  when: ursula_os == 'rhel'
+
+- name: Creates keystone uwsgi and httpd directories
+  file: path={{ item }} state=directory
+        owner=keystone group=keystone mode=0775
+  with_items:
+    - /etc/keystone/uwsgi
+    - /run/uwsgi/keystone
+
+- name: configure keystone admin wsgi
+  template: src=etc/keystone/uwsgi/keystone-admin.ini
+            dest=/etc/keystone/uwsgi/keystone-admin.ini mode=0775
+            owner=keystone group=keystone
+  notify: restart keystone services
+
+- name: configure keystone public wsgi
+  template: src=etc/keystone/uwsgi/keystone-main.ini
+            dest=/etc/keystone/uwsgi/keystone-main.ini mode=0775
+            owner=keystone group=keystone
+  notify: restart keystone services
+
+- name: setup keystone sso template
+  template: src=etc/keystone/sso_callback_template.html
+            dest=/etc/keystone/sso_callback_template.html
+  when: keystone.federation.enabled|bool
+  notify: restart keystone services
+
+- name: set ownership and permissions for logging.conf
+  file:
+    path: /etc/keystone/logging.conf
+    owner: keystone
+    group: keystone
+    mode: 0640
+  when: openstack_install_method == 'distro'
+
+- include: openidc.yml
+  when: keystone.federation.enabled|bool and keystone.federation.sp.oidc.enabled|bool
+
+- name: keystone apache vhost (ubuntu)
+  template: src=etc/apache2/sites-available/keystone.conf
+            dest=/etc/apache2/sites-available/keystone.conf
+  when: ursula_os == 'ubuntu'
+  notify:
+    - reload apache
+  tags: keystone-federation
+
+- name: keystone apache vhost (rhel)
+  template: src=etc/apache2/sites-available/keystone.conf
+            dest=/etc/httpd/conf.d/keystone.conf
+  when: ursula_os == 'rhel'
+  notify:
+    - reload apache
+  tags: keystone-federation
+
+- include: saml.yml
+  when: keystone.federation.enabled|bool and keystone.federation.sp.saml.enabled|bool
+
+- name: configure keystone
+  template: src={{ item }} dest=/etc/keystone/
+            mode=0640
+            owner=keystone group=keystone
+  with_fileglob: ../templates/etc/keystone/*
+  notify:
+    - restart keystone services
+
+- name: set horizon keystone policy fact
+  set_fact: policy_for_horizon=True
+  when:
+    - horizon is defined
+    - horizon.customize|default('False')|bool
+
+- name: configure custom keystone policy
+  template:
+    src: "etc/keystone/policy.json"
+    dest: "/etc/openstack-dashboard/keystone_policy.json"
+    mode: 0640
+    owner: "root"
+    group: "{{ openstack_meta.apache[ursula_os].group }}"
+
+- include: k2k-idp.yml
+  when: keystone.federation.enabled|bool and keystone.federation.idp.k2k.enabled|bool
+
+- name: sync keystone database
+  command: keystone-manage db_sync
+  when: database_create.changed or force_sync|default('false')|bool
+  run_once: true
+  changed_when: true
+  notify: restart keystone services
+  # we want this to always be changed so that it can notify the service restart
+  tags: db-migrate
+
+- name: trigger restart on upgrades
+  debug:
+    msg: "Triggering service restart for upgrade"
+  changed_when: True
+  notify: restart keystone services
+  when: code_has_changed | default('False') | bool and
+        upgrade | default('False') | bool
+
+- name: enable keystone apache site
+  apache2_site: name=keystone state=present
+  notify:
+    - reload apache
+  when: ursula_os == 'ubuntu'
+
+- include: ldap.yml
+  when: keystone.ldap_domain.enabled|default('False')|bool
+
+- meta: flush_handlers
+
+- name: start keystone
+  service:
+    name: "{{ openstack_meta.keystone.services.keystone_api[ursula_os].name }}"
+    state: started
+    enabled: true
+
+- name: start shibboleth service
+  service: name=shibd state=started enabled=true
+  when: keystone.federation.enabled|bool and keystone.federation.sp.saml.enabled|bool
+
+- name: add cron job to clean up expired tokens
+  template:
+    src: etc/cron.d/drop-expired-keystone-tokens
+    dest: /etc/cron.d/drop-expired-keystone-tokens
+    owner: root
+    group: root
+    mode: 0640
+
+- name: delete old token flush job
+  file:
+    path: /etc/cron.hourly/drop-expired-keystone-tokens
+    state: absent
+
+- include: monitoring.yml
+  tags:
+    - monitoring
+    - common
+  when: monitoring.enabled|default('True')|bool
+
+- include: logging.yml
+  tags:
+    - logrotate
+    - logging

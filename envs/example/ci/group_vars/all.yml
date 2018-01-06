@@ -1,0 +1,23 @@
+---
+stack_env: example_ci
+floating_ip: 172.16.0.100
+
+xtradb:
+  sst_auth_password: asdf
+
+percona:
+  replication: False
+
+ceilometer:
+  enabled: True
+  logging:
+    debug: True
+    verbose: True
+
+keystone:
+  ldap_domain:
+    enabled: True
+    domain: users
+
+serverspec:
+  enabled: True

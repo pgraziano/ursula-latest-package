@@ -1,0 +1,323 @@
+---
+install_inspec_controls: []
+
+inspec:
+  version: ~
+  enabled: true
+  interval: 43200
+  dependency_install_method: 'tar'
+  dependency_path: /etc/inspec/
+  profiles:
+    openstack_security:
+      name: openstack-baseline
+      version: master
+      url: https://github.com/dev-sec/openstack-baseline/archive/master.tar.gz
+    stig_rhel:
+      name: inspec-stig-rhel7
+      version: master
+      url: https://github.com/inspec-stigs/inspec-stig-rhel7/archive/master.tar.gz
+    ursula-inspec:
+      name: ursula-inspec
+      version: master
+      url: https://github.com/blueboxgroup/ursula-inspec/archive/master.tar.gz
+  controls:
+    common:
+      enabled: true
+      profile: ursula-inspec
+      required_controls:
+        - COMMON001
+    rhel7:
+      enabled: true
+      profile: stig_rhel
+      skip_controls:
+        - RHEL-07-010010
+        - RHEL-07-010020
+        - RHEL-07-010371
+        - RHEL-07-010372
+        - RHEL-07-010373
+        - RHEL-07-010072
+        - RHEL-07-040810
+        - RHEL-07-040820
+        - RHEL-07-020140
+        - RHEL-07-010500
+        - RHEL-07-020130
+        - RHEL-07-030810
+        - RHEL-07-030820
+        - RHEL-07-040290
+        - RHEL-07-040250
+        - RHEL-07-040480
+        - RHEL-07-040010
+        - RHEL-07-040300
+        - RHEL-07-030524
+        - RHEL-07-030525
+        - RHEL-07-030526
+        - RHEL-07-030530
+        - RHEL-07-030531
+        - RHEL-07-030540
+        - RHEL-07-030541
+        - RHEL-07-030550
+        - RHEL-07-030560
+        - RHEL-07-030561
+        - RHEL-07-030630
+        - RHEL-07-030670
+        - RHEL-07-030671
+        - RHEL-07-030672
+        - RHEL-07-030673
+        - RHEL-07-030310
+        - RHEL-07-030674
+        - RHEL-07-030750
+        - RHEL-07-030751
+        - RHEL-07-030752
+        - RHEL-07-030753
+        - RHEL-07-030754
+        - RHEL-07-030380
+        - RHEL-07-030381
+        - RHEL-07-030382
+        - RHEL-07-030383
+        - RHEL-07-030390
+        - RHEL-07-030391
+        - RHEL-07-030392
+        - RHEL-07-030400
+        - RHEL-07-030401
+        - RHEL-07-030402
+        - RHEL-07-030403
+        - RHEL-07-030404
+        - RHEL-07-030405
+        - RHEL-07-030420
+        - RHEL-07-030421
+        - RHEL-07-030422
+        - RHEL-07-030423
+        - RHEL-07-030424
+        - RHEL-07-030425
+        - RHEL-07-030441
+        - RHEL-07-030442
+        - RHEL-07-030443
+        - RHEL-07-030444
+        - RHEL-07-020160
+        - RHEL-07-020170
+        - RHEL-07-020200
+        - RHEL-07-020211
+        - RHEL-07-020650
+        - RHEL-07-020700
+        - RHEL-07-020860
+        - RHEL-07-021160
+        - RHEL-07-021230
+        - RHEL-07-021240
+        - RHEL-07-021250
+        - RHEL-07-021270
+        - RHEL-07-021280
+        - RHEL-07-010280
+        - RHEL-07-010380
+        - RHEL-07-010420
+        - RHEL-07-010460
+        - RHEL-07-030510
+        - RHEL-07-030511
+        - RHEL-07-030512
+        - RHEL-07-030513
+        - RHEL-07-030514
+        - RHEL-07-030521
+        - RHEL-07-030522
+        - RHEL-07-021260
+        - RHEL-07-030090
+        - RHEL-07-030330
+        - RHEL-07-030331
+        - RHEL-07-030340
+        - RHEL-07-030350
+        - RHEL-07-030351
+        - RHEL-07-030490
+        - RHEL-07-030491
+        - RHEL-07-030492
+        - RHEL-07-030523
+        - RHEL-07-010240
+        - RHEL-07-040160
+        - RHEL-07-030770
+        - RHEL-07-040020
+        - RHEL-07-010130
+        - RHEL-07-010140
+        - RHEL-07-010150
+        - RHEL-07-010160
+        - RHEL-07-010250
+        - RHEL-07-020151
+        - RHEL-07-020152
+        - RHEL-07-040170
+        - RHEL-07-010220
+        - RHEL-07-020680
+        - RHEL-07-020670
+        - RHEL-07-020250
+        - RHEL-07-021060
+        - RHEL-07-040580
+      attributes:
+        RHEL_07_030710_audit_key_name: audit_account_changes-V-38531
+        client_alive_interval: "{{ common.ssh.client_alive_interval }}"
+        RHEL_07_030523_audit_key_name: actions-V-38578
+    horizon:
+      enabled: true
+      profile: openstack_security
+      attributes:
+        horizon_config_group: "{{ (ursula_os == 'rhel' )| ternary('apache', 'www-data') }}"
+      required_controls:
+        - check-dashboard-01
+        - check-dashboard-02
+        - check-dashboard-03
+        - check-dashboard-04
+        - check-dashboard-05
+        - check-dashboard-06
+        - check-dashboard-07
+        - check-dashboard-08
+        - check-dashboard-09
+        - check-dashboard-10
+        - check-dashboard-11
+    cinder:
+      enabled: true
+      profile: openstack_security
+      required_controls:
+        - check-block-01
+        - check-block-02
+        - check-block-03
+        - check-block-04
+        - check-block-05
+        - check-block-06
+        - check-block-07
+        - check-block-08
+    glance:
+      enabled: true
+      profile: openstack_security
+      attributes:
+        glance_config_files: "{{ (ursula_os == 'rhel') | ternary('[\"glance_api_audit_map.conf\",\"glance-api-paste.ini\",
+        \"glance-api.conf\",\"glance-cache.conf\",\"glance-glare.conf\",\"glance-registry-paste.ini\",\"glance-registry.conf\",
+        \"glance-scrubber.conf\",\"glance-swift-store.conf\",\"policy.json\",\"schema-image.json\"]','[\"glance-api.conf\",
+        \"policy.json\",\"glance_api_audit_map.conf\",\"glance-api-paste.ini\",\"glance-registry-paste.ini\",\"glance-registry.conf\",
+        \"glance-swift-store.conf\"]') }}"
+      required_controls:
+        - check-image-01
+        - check-image-02
+        - check-image-03
+        - check-image-04
+    nova_data:
+      enabled: true
+      profile: openstack_security
+      required_controls:
+        - check-compute-01
+        - check-compute-02
+        - check-compute-03
+        - check-compute-04
+    nova_control:
+      enabled: true
+      profile: openstack_security
+      required_controls:
+        - check-compute-01
+        - check-compute-02
+        - check-compute-03
+        - check-compute-04
+    keystone:
+      enabled: true
+      profile: openstack_security
+      required_controls:
+        - check-identity-01
+        - check-identity-02
+        - check-identity-03
+        - check-identity-04
+        - check-identity-05
+        - check-identity-06
+    neutron_data:
+      enabled: true
+      profile: openstack_security
+      required_controls:
+        - check-neutron-01
+        - check-neutron-02
+        - check-neutron-03
+        - check-neutron-04
+    neutron_control:
+      enabled: true
+      profile: openstack_security
+      required_controls:
+        - check-neutron-01
+        - check-neutron-02
+        - check-neutron-03
+        - check-neutron-04
+        - check-neutron-05
+    heat:
+      enabled: true
+      attributes:
+        heat_enabled: true
+      profile: openstack_security
+      required_controls:
+        - check-orchestration-01
+        - check-orchestration-02
+        - check-orchestration-03
+    ceilometer:
+      enabled: true
+      profile: openstack_security
+      attributes:
+        ceilometer_enabled: true
+      required_controls:
+        - check-telemetry-01
+        - check-telemetry-02
+        - check-telemetry-03
+        - check-telemetry-04
+    aodh:
+      enabled: true
+      profile: openstack_security
+      attributes:
+        aodh_enabled: true
+      required_controls:
+        - check-telemetry-alarming-01
+        - check-telemetry-alarming-02
+        - check-telemetry-alarming-03
+    kvm:
+      enabled: true
+      profile: ursula-inspec
+      attributes:
+        libvirt_sock_group: "{{ (ursula_os == 'rhel' )| ternary('libvirt', 'libvirtd') }}"
+        qemu_user: "{{ (ursula_os == 'rhel' )| ternary('qemu', 'libvirt-qemu') }}"
+        qemu_group: "{{ (ursula_os == 'rhel' )| ternary('qemu', 'libvirtd') }}"
+      required_controls:
+        - KVM001
+        - KVM003
+        - KVM004
+    mongodb:
+      enabled: true
+      profile: ursula-inspec
+      required_controls:
+        - MON001
+        - MON002
+        - MON003
+        - MON004
+        - MON005
+        - MON006
+        - MON007
+        - MON008
+    mysql:
+      enabled: true
+      profile: ursula-inspec
+      required_controls:
+        - MYSQL001
+        - MYSQL002
+        - MYSQL003
+        - MYSQL004
+        - MYSQL005
+        - MYSQL006
+    rabbitmq:
+      enabled: true
+      profile: ursula-inspec
+      required_controls:
+        - RABBITMQ001
+        - RABBITMQ002
+        - RABBITMQ003
+        - RABBITMQ004
+        - RABBITMQ005
+        - RABBITMQ006
+        - RABBITMQ007
+    swift:
+      enabled: true
+      profile: ursula-inspec
+      required_controls:
+        - check-swift-01
+        - check-swift-05
+    ceph:
+      enabled: true
+      profile: ursula-inspec
+      required_controls:
+        - CEPH001
+        - CEPH002
+        - CEPH003

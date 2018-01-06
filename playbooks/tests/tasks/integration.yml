@@ -1,0 +1,236 @@
+---
+- name: generate ssh key for root
+  user: name=root generate_ssh_key=yes
+  register: rootuser
+
+- name: generate nova key-pair
+  environment:
+    PYTHONPATH: "{{ basevenv_lib_dir|default(omit) }}"
+  os_keypair:
+    name: turtle-key
+    auth:
+      auth_url: "{{ endpoints.auth_uri }}"
+      project_name: admin
+      username: admin
+      password: "{{ secrets.admin_password }}"
+    public_key: "{{ rootuser.ssh_public_key }}"
+    state: present
+
+- name: check if test security group exists
+  shell: . /root/stackrc; openstack security group list | grep  turtle-sec;
+  register: sec_group_result
+  failed_when: false
+
+- name: generate test security group
+  shell: . /root/stackrc; SECURITY_GROUP_NAME=turtle-sec;
+         openstack security group create $SECURITY_GROUP_NAME;
+         openstack security group rule create --ingress --protocol tcp $SECURITY_GROUP_NAME;
+         openstack security group rule create --ingress --protocol icmp $SECURITY_GROUP_NAME;
+  when: sec_group_result.rc != 0
+
+- name: neutron router namespace can ping internet
+  shell: ROUTER_NS=$( ip netns show | grep qrouter- | awk '{print $1}' );
+         ip netns exec ${ROUTER_NS} ping -c 5 8.8.8.8
+  register: result
+  until: result|success
+  retries: 6
+  delay: 10
+
+- name: ensure neutron meta-data is running
+  shell: . /root/stackrc; ROUTER_ID=$(neutron router-show default | grep " id " | awk '{ print $4 }');
+         pgrep -u neutron -f neutron-ns-metadata-proxy.*$ROUTER_ID;
+
+- name: ensure neutron meta-data is listening
+  shell: ROUTER_NS=$( ip netns show | grep qrouter- | awk '{print $1}' );
+         ip netns exec ${ROUTER_NS} lsof -i:9697
+
+- name: nova can boot an instance
+  environment:
+    PYTHONPATH: "{{ basevenv_lib_dir|default(omit) }}"
+  os_server:
+      name: turtle-stack
+      auth:
+        auth_url: "{{ endpoints.auth_uri }}"
+        project_name: admin
+        username: admin
+        password: "{{ secrets.admin_password }}"
+      image: cirros
+      security_groups: turtle-sec
+      key_name: turtle-key
+      flavor: 1
+      auto_floating_ip: no
+      nics:
+        - net-name: internal
+  register: turtle_stack
+
+- name: delete any existing floating IP associated with instance
+  shell: . /root/stackrc; openstack floating ip delete $(openstack floating ip list | grep {{ turtle_stack.openstack.private_v4 }}  | awk '{ print $2 }')
+  failed_when: false
+
+- name: nova can associate floating IP with test instance
+  environment:
+    PYTHONPATH: "{{ basevenv_lib_dir|default(omit) }}"
+  os_floating_ip:
+    auth:
+      auth_url: "{{ endpoints.auth_uri }}"
+      project_name: admin
+      username: admin
+      password: "{{ secrets.admin_password }}"
+    network: external
+    server: turtle-stack
+    reuse: true
+    fixed_address: "{{ turtle_stack.openstack.private_v4 }}"
+    wait: true
+  register: floating_ip
+
+- name: instance is active
+  shell: . /root/stackrc; openstack server show {{ turtle_stack.openstack.id }} | grep ACTIVE
+  register: result
+  until: result|success
+  retries: 6
+  delay: 10
+
+- name: instance is running
+  shell: . /root/stackrc; openstack server show {{ turtle_stack.openstack.id }} | grep Running
+  register: result
+  until: result|success
+  retries: 6
+  delay: 10
+
+- name: instance ready for login
+  shell: . /root/stackrc; openstack console log show {{ turtle_stack.openstack.id }} | grep "login:"
+  register: result
+  until: result|success
+  retries: 30
+  delay: 10
+
+- name: nova can create a volume via cinder
+  environment:
+    PYTHONPATH: "{{ basevenv_lib_dir|default(omit) }}"
+  os_volume:
+    auth:
+      auth_url: "{{ endpoints.auth_uri }}"
+      project_name: admin
+      username: admin
+      password: "{{ secrets.admin_password }}"
+    display_name: turtle-vol
+    size: 2
+  when: cinder.enabled|bool
+
+- name: check volume available before attach
+  shell: . /root/stackrc ;cinder list |grep turtle-vol|awk '{print $4}'
+  args:
+    executable: /bin/bash
+  register: result
+  until: result.stdout.find('available')!=-1
+  retries: 6
+  delay: 10
+  when: cinder.enabled|bool
+
+- name: nova can attach cinder volume
+  environment:
+    PYTHONPATH: "{{ basevenv_lib_dir|default(omit) }}"
+  os_server_volume:
+    auth:
+      auth_url: "{{ endpoints.auth_uri }}"
+      project_name: admin
+      username: admin
+      password: "{{ secrets.admin_password }}"
+    server: turtle-stack
+    volume: turtle-vol
+  when: cinder.enabled|bool
+  register: result
+  until: result|success
+  retries: 5
+  delay: 10
+
+- name: capture instance boot log
+  shell: . /root/stackrc; openstack console log show {{ turtle_stack.openstack.id }}
+  register: vm_log
+
+- debug:
+    var: vm_log.stdout_lines
+
+- name: neutron dhcp namespace can ping instance
+  shell: DHCP_NS=$( ip netns show | grep qdhcp- | awk '{print $1}' );
+         ip netns exec ${DHCP_NS} ping -c 5 {{ turtle_stack.openstack.private_v4 }}
+
+- name: neutron router namespace can ping instance
+  shell: ROUTER_NS=$( ip netns show | grep qrouter- | awk '{print $1}' );
+         ip netns exec ${ROUTER_NS} ping -c 5 {{ turtle_stack.openstack.private_v4 }}
+
+- name: wait for instance to boot
+  wait_for:
+    host: "{{ floating_ip.floating_ip.floating_ip_address }}"
+    port: 22
+    timeout: 180
+  when: floating_ip.floating_ip.floating_ip_address is defined
+
+- name: test instance can ping 8.8.8.8
+  command: ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=60
+           -i /root/.ssh/id_rsa
+           cirros@{{ floating_ip.floating_ip.floating_ip_address }}
+           ping -c 5 8.8.8.8
+  when: floating_ip.floating_ip.floating_ip_address is defined
+
+- name: test instance can ping Google
+  command: ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=60
+           -i /root/.ssh/id_rsa
+           cirros@{{ floating_ip.floating_ip.floating_ip_address }}
+           ping -c 5 www.google.com
+  when: floating_ip.floating_ip.floating_ip_address is defined
+
+
+- name: write volume in VM
+  shell: ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=60
+         -i /root/.ssh/id_rsa
+         cirros@{{ floating_ip.floating_ip.floating_ip_address }}
+         sudo dd if=/dev/zero of=/dev/vdb count=100 bs=1M
+  when: cinder.enabled|bool
+
+- name: detach volume from server
+  shell: . /root/stackrc && {{ item }}
+  args:
+    executable: /bin/bash
+  with_items:
+    - openstack server remove volume turtle-stack turtle-vol
+  when: cinder.enabled|bool
+
+- name: check volume available before detach
+  shell: . /root/stackrc ;cinder list |grep turtle-vol|awk '{print $4}'
+  args:
+    executable: /bin/bash
+  register: result
+  until: result.stdout.find('available')!=-1
+  retries: 6
+  delay: 10
+  when: cinder.enabled|bool
+
+- name: delete volume
+  shell: . /root/stackrc && {{ item }}
+  args:
+    executable: /bin/bash
+  with_items:
+    - openstack volume delete turtle-vol
+  when: cinder.enabled|bool
+
+
+- name: delete instance and keypair
+  shell: . /root/stackrc && {{ item }}
+  with_items:
+    - openstack server delete turtle-stack
+    - openstack keypair delete turtle-key
+
+- name: check instance turtle-stack has been deleted
+  shell: . /root/stackrc ;openstack server list
+  args:
+    executable: /bin/bash
+  register: result
+  until: result.stdout.find('turtle-stack')==-1
+  retries: 6
+  delay: 10
+
+- name: delete security group
+  shell: . /root/stackrc && {{ item }}
+  with_items:
+    - openstack security group delete turtle-sec

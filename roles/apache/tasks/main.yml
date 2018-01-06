@@ -1,0 +1,137 @@
+---
+- name: install apache package
+  package: name="{{ openstack_meta.apache[ursula_os].package_name }}"
+  register: result
+  until: result|succeeded
+  retries: 5
+
+- block:
+  - name: use our apache config
+    template:
+      src: httpd.conf
+      dest: /etc/httpd/conf/httpd.conf
+    notify:
+      - reload apache
+
+  - name: check selinux for httpd_can_network_connect
+    seboolean: name=httpd_can_network_connect state=yes persistent=yes
+  when: ursula_os == 'rhel'
+
+- name: install apache module packages
+  package: name={{ item }}
+  with_items: "{{ apache.modules[ursula_os] }}"
+  register: result
+  until: result|succeeded
+  retries: 5
+
+- block:
+  - name: enable apache modules
+    apache2_module: name={{ item }}
+    with_items:
+      - headers
+      - ssl
+      - rewrite
+      - uwsgi
+      - proxy
+      - proxy_http
+      - proxy_uwsgi
+    notify: reload apache
+
+  - name: disable apache status
+    command: a2dismod status
+    notify:
+      - reload apache
+
+  - name: disable default vhost
+    apache2_site: name={{ item }} state=absent
+    with_items:
+      - 000-default
+      - default-ssl
+    notify: restart apache
+
+  - name: do not include ports.conf
+    lineinfile: dest=/etc/apache2/apache2.conf
+                regexp="^Include ports\.conf$"
+                state=absent
+
+  - name: remove ports.conf
+    file: dest=/etc/apache2/ports.conf state=absent
+
+  - name: update security.conf to mask details of apache version and modules
+    lineinfile: dest=/etc/apache2/conf-available/security.conf
+                regexp="^ServerTokens"
+                line='ServerTokens Prod'
+                state=present
+    notify:
+      - reload apache
+
+  - name: mask the version number and the ServerName of apache
+    lineinfile: dest=/etc/apache2/conf-available/security.conf
+                regexp="^ServerSignature"
+                line='ServerSignature Off'
+                state=present
+    notify:
+      - reload apache
+
+  - name: disable trace method on apache
+    lineinfile: dest=/etc/apache2/conf-available/security.conf
+                regexp="^TraceEnable"
+                line='TraceEnable Off'
+                state=present
+    notify:
+      - reload apache
+
+  when: ursula_os == 'ubuntu'
+
+- block:
+  - name: disable apache status
+    lineinfile:
+      dest: /etc/httpd/conf.modules.d/00-base.conf
+      regexp: "^LoadModule status_module$"
+      state: absent
+    notify:
+      - reload apache
+
+  - name: disable apache status
+    lineinfile:
+      dest: /etc/httpd/conf/httpd.conf
+      regexp: "^Listen 80$"
+      state: absent
+    notify:
+      - reload apache
+
+  - name: disable default vhosts
+    file: dest=/etc/httpd/conf.d/{{ item }} state=absent
+    with_items:
+      - autoindex.conf
+      - userdir.conf
+      - welcome.conf
+    notify: restart apache
+
+  - name: enable the mod_proxy_uwsgi module
+    template:
+      src: etc/httpd/conf.modules.d/43-mod_proxy_uwsgi.conf
+      dest: /etc/httpd/conf.modules.d/43-mod_proxy_uwsgi.conf
+      mode: 0644
+      owner: root
+      group: root
+    notify: restart apache
+
+  when: ursula_os == 'rhel'
+
+- name: enable apache server
+  service:
+    name: "{{ apache.service_name[ursula_os] }}"
+    enabled: true
+
+- name: create horizon config directory
+  file:
+    dest: "/etc/openstack-dashboard"
+    state: directory
+    group: "{{ openstack_meta.apache[ursula_os].group }}"
+    mode: 0750
+
+- include: logging.yml
+  tags:
+    - logrotate
+    - logging

@@ -1,0 +1,12 @@
+---
+#
+# NOTE: this file is included by the prereboot tag, as such it should work not include anything that will break older releases
+#
+- name: serial console init script
+  template: src=etc/init/tty_console.conf dest=/etc/init/{{ tty }}.conf
+
+- name: start serial console
+  service: name={{ tty }} state=started enabled=yes
+
+- name: append serial console kernel command line
+  set_fact: serial_console_cmdline="{{ serial_console_cmdline|default('') }} console={{ tty }},{{ baud_rate|default('9600') }}n8"

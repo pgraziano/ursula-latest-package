@@ -1,0 +1,17 @@
+---
+serverspec:
+  enabled: true
+  interval: 3600
+  gems:
+    - name: rspec
+      version: 3.5.0
+    - name: rspec-core
+      version: 3.5.3
+    - name: net-ssh
+      version: 2.9.2
+    - name: specinfra
+      version: 2.50.4
+    - name: serverspec
+      version: 2.29.1
+    - name: serverspec-extended-types
+      version: 0.0.3

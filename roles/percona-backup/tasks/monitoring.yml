@@ -1,0 +1,7 @@
+---
+- name: percona xtradb backup
+  sensu_check:
+    name: check-percona-xtradb-backup
+    plugin: check-percona-xtrabackup.py
+    interval: 43200
+    occurrences: 1

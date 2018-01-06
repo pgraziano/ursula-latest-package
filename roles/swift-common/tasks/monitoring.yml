@@ -1,0 +1,72 @@
+---
+- name: swift dispersion check
+  sensu_check: name=swift-dispersion plugin=check-swift-dispersion.py
+               interval=600 occurrences=1 use_sudo=true
+               args='{{ (client.self_signed_cert|default('False')|bool) | ternary("--insecure ","") }} -z {{ swift.monitoring.sensu_checks.check_swift_dispersion.criticality }}'
+               only_on_ip="{{ swift_undercloud_floating_ip | default( swift_floating_ip ) }}"
+  notify: restart sensu-client
+
+- name: sensu account process checks
+  sensu_process_check: service={{ item | basename }} warn_over=30 crit_over=35
+  with_items:
+    - "{{ swift.services.swift_account_auditor.cmd }}"
+    - "{{ swift.services.swift_account_replicator.cmd }}"
+    - "{{ swift.services.swift_account_reaper.cmd }}"
+    - "{{ swift.services.swift_account.cmd }}"
+  notify: restart sensu-client
+
+- name: sensu container process checks
+  sensu_process_check: service={{ item | basename }} warn_over=30 crit_over=35
+  with_items:
+    - "{{ swift.services.swift_container_replicator.cmd }}"
+    - "{{ swift.services.swift_container_updater.cmd }}"
+    - "{{ swift.services.swift_container_auditor.cmd }}"
+    - "{{ swift.services.swift_container_sync.cmd }}"
+    - "{{ swift.services.swift_container.cmd }}"
+  notify: restart sensu-client
+
+- name: sensu object process checks
+  sensu_process_check: service={{ item | basename }} warn_over=30 crit_over=35
+  with_items:
+    - "{{ swift.services.swift_object_replicator.cmd }}"
+    - "{{ swift.services.swift_object_updater.cmd }}"
+    - "{{ swift.services.swift_object.cmd }}"
+  notify: restart sensu-client
+
+- name: sensu proxy process checks
+  sensu_process_check: service={{ item | basename }}
+  with_items:
+    - "{{ swift.services.swift_proxy.cmd }}"
+    - haproxy
+    - memcached
+  notify: restart sensu-client
+
+- name: sensu check for mounted drives
+  sensu_check: name=fstab-mounts plugin=check-fstab-mounts.rb
+               args='-t xfs -z {{ swift.monitoring.sensu_checks.fstab_mounts.criticality }}'
+               interval=60
+  notify: restart sensu-client
+
+- name: ucarp failover alert
+  sensu_check: name=check-ucarp-failover plugin=check-log.rb use_sudo=true
+               auto_resolve=false interval=20 occurrences=1
+               args="-f {{ ( ursula_os == 'ubuntu' )| ternary('/var/log/syslog', '/var/log/messages') }} -q 'ucarp.+[Ss]witching to state' --silent"
+  notify: restart sensu-client
+
+- name: ucarp processes check
+  sensu_check: name=check-ucarp-procs plugin=check-ucarp-procs.sh use_sudo=true
+               args="-z {{ swift.monitoring.sensu_checks.check_ucarp_procs.criticality }}"
+  notify: restart sensu-client
+
+- name: swift sla metrics
+  sensu_metrics_check: name=swift-sla-metrics plugin=metrics-os-api.py
+                       args='-S swift --scheme {{ monitoring.graphite.cluster_prefix }}'
+                       only_on_ip="{{ swift_undercloud_floating_ip | default( swift_floating_ip ) }}"
+  notify: restart sensu-client
+
+- name: swift usage metrics
+  sensu_metrics_check:
+    name: swift-usage-metrics
+    plugin: metrics-swift.py
+    args: "--ip-addr={{ primary_ip }} --scheme {{ monitoring.graphite.host_prefix }}"
+  notify: restart sensu-client

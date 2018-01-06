@@ -1,0 +1,194 @@
+---
+# reboot_cluster
+#
+# reboot every every host
+# perform the reboots serially for services that require it:
+#  controllers, swift nodes, ceph nodes
+#
+# computes will be rebooted serially by default
+# but can be rebooted in parallel via:
+#    '-e reboot_computes_in_serial=False'
+
+- hosts: controller
+  serial: 1
+  tasks:
+    - block:
+       - name: Reboot
+         command: shutdown -r now
+         async: 0
+         poll: 0
+         failed_when: false
+
+       - name: waiting for server to come back
+         wait_for: host={{ inventory_hostname }}
+                   state=started
+                   connect_timeout=15
+                   timeout={{ reboot_timeout | default('500') }}
+         delegate_to: localhost
+         become: false
+
+       - name: cluster health check
+         command: /etc/sensu/plugins/percona-cluster-size.rb -d /root/.my.cnf --expected 3 --criticality critical
+         register: cstat
+         until: cstat | succeeded
+         retries: 5
+         delay: 10
+         run_once: true
+      tags: reboot_controller
+
+# check compute services before we start bouncing computes
+- hosts: compute:!controller
+  tasks:
+    - include: 'check_compute_services.yml'
+      tags: reboot_compute
+
+# do computes serially checking services as we go
+- hosts: compute:!controller
+  serial: 1
+  tasks:
+    - block:
+        - name: Reboot
+          command: shutdown -r now
+          async: 0
+          poll: 0
+          failed_when: false
+        - name: waiting for server to come back
+          wait_for: host={{ inventory_hostname }}
+                    state=started
+                    connect_timeout=15
+                    timeout={{ reboot_timeout | default('500') }}
+          delegate_to: localhost
+          become: false
+        - include: 'check_compute_services.yml'
+      when: reboot_computes_in_serial|default('True')|bool
+      tags: reboot_compute
+
+# or do computes en masse
+- hosts: compute:!controller
+  tasks:
+    - block:
+      - name: Reboot
+        command: shutdown -r now
+        async: 0
+        poll: 0
+        failed_when: false
+      - name: waiting for server to come back
+        wait_for: host={{ inventory_hostname }}
+                  state=started
+                  connect_timeout=15
+                  timeout={{ reboot_timeout | default('500') }}
+        delegate_to: localhost
+        become: false
+      when: not (reboot_computes_in_serial|default('True')|bool)
+      tags: reboot_compute
+
+# computes en masse - check services after reboots
+- hosts: compute:!controller
+  tasks:
+    - block:
+        - include: 'check_compute_services.yml'
+      when: not (reboot_computes_in_serial|default('True')|bool)
+      tags: reboot_compute
+
+- hosts: swiftnode
+  serial: 1
+  tasks:
+    - block:
+        - name: Reboot
+          command: shutdown -r now
+          async: 0
+          poll: 0
+          failed_when: false
+
+        - name: waiting for server to come back
+          wait_for: host={{ inventory_hostname }}
+                    state=started
+                    connect_timeout=15
+                    timeout={{ reboot_timeout | default('500') }}
+          delegate_to: localhost
+          become: false
+
+        - name: swift health check
+          command: /etc/sensu/plugins/check-swift-dispersion.py
+          register: result
+          until: result | succeeded
+          retries: 5
+          delay: 10
+      tags: reboot_swift
+
+- hosts: ceph_osds[0]
+  tasks:
+  - name: ceph health check before starting reboots
+    command: /etc/sensu/plugins/check-ceph.rb
+    register: result
+    until: result | succeeded
+    retries: 5
+    delay: 10
+    tags:
+      - reboot_ceph_osd
+      - reboot_ceph
+
+- hosts: ceph_osds
+  serial: 1
+  tasks:
+    - block:
+        - name: set noout flag
+          command: ceph osd set noout
+
+        - name: Reboot
+          command: shutdown -r now
+          async: 0
+          poll: 0
+          failed_when: false
+
+        - name: waiting for server to come back
+          wait_for: host={{ inventory_hostname }}
+                    state=started
+                    connect_timeout=15
+                    timeout={{ reboot_timeout | default('500') }}
+          delegate_to: localhost
+          become: false
+
+        - name: unset noout flag
+          command: ceph osd unset noout
+
+        - name: wait for noout flag
+          pause: seconds=30
+
+        - name: ceph health check
+          command: /etc/sensu/plugins/check-ceph.rb
+          register: result
+          until: result | succeeded
+          retries: 5
+          delay: 10
+      tags:
+        - reboot_ceph_osd
+        - reboot_ceph
+
+- hosts: ceph_monitors
+  serial: 1
+  tasks:
+    - block:
+        - name: Reboot
+          command: shutdown -r now
+          async: 0
+          poll: 0
+          failed_when: false
+
+        - name: waiting for server to come back
+          wait_for: host={{ inventory_hostname }}
+                    state=started
+                    connect_timeout=15
+                    timeout={{ reboot_timeout | default('500') }}
+          delegate_to: localhost
+          become: false
+
+        - name: ceph health check
+          command: /etc/sensu/plugins/check-ceph.rb
+          register: result
+          until: result | succeeded
+          retries: 5
+          delay: 10
+      tags:
+        - reboot_ceph_monitor
+        - reboot_ceph

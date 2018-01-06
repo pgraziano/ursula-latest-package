@@ -1,0 +1,55 @@
+---
+primary_interface: ansible_eth1
+undercloud_cidr:
+  - cidr: 172.16.0.0/24
+
+fqdn: openstack.example.com
+#fqdn: vagrant.openstack.blueboxgrid.com
+
+nova:
+  scheduler_default_filters: RetryFilter,AvailabilityZoneFilter,ComputeFilter,CoreFilter,ComputeCapabilitiesFilter,ImagePropertiesFilter,ServerGroupAntiAffinityFilter,ServerGroupAffinityFilter
+
+neutron:
+  plugin: ml2
+  bridge_mappings: physnet:eth2
+  network_vlan_ranges: physnet
+  tenant_network_type: vlan
+  enable_flat_networks: True
+  tunnel_types: []
+  networks:
+    - name: internal
+      shared: true
+      external: true
+      network_type: flat
+      provider_physical_network: physnet
+      segmentation_id: ~
+  subnets:
+    - name: internal
+      network_name: internal
+      cidr: 172.16.255.0/24
+      enable_dhcp: "true"
+      gateway_ip: 172.16.255.100
+      ip_version: 4
+      dns_nameservers: '8.8.8.8,8.8.4.4'
+  routers: []
+  router_interfaces: []
+  logging:
+    debug: True
+  tenant_nameservers:
+    - 8.8.4.4
+    - 8.8.8.8
+  lbaas:
+    enabled: false
+
+common:
+  ipmi:
+    enabled: false
+
+stack_env: vagrant
+
+haproxy:
+  enabled: True
+
+logging:
+  forward:
+    host: 172.16.0.13

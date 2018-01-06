@@ -1,0 +1,75 @@
+---
+project_name: ceilometer
+ceilometer:
+  services:
+    ceilometer_api: "{{ openstack_meta.ceilometer.services.ceilometer_api[ursula_os] }}"
+    ceilometer_collector: "{{ openstack_meta.ceilometer.services.ceilometer_collector[ursula_os] }}"
+    ceilometer_notification: "{{ openstack_meta.ceilometer.services.ceilometer_notification[ursula_os] }}"
+    ceilometer_polling: "{{ openstack_meta.ceilometer.services.ceilometer_polling[ursula_os] }}"
+    ceilometer_polling_compute: "{{ openstack_meta.ceilometer.services.ceilometer_polling_compute[ursula_os] }}"
+  enabled: False
+  distro:
+    controller:
+      project_packages:
+        - openstack-selinux
+        - openstack-ceilometer-api
+        - openstack-ceilometer-collector
+        - openstack-ceilometer-notification
+        - openstack-ceilometer-polling
+    compute:
+      project_packages:
+        - openstack-selinux
+        - openstack-ceilometer-polling
+        - openstack-ceilometer-compute
+  source:
+    rev: newton-eol
+    upper_constraints: '{{ openstack_meta.upper_constraints }}'
+    python_dependencies:
+      - { name: pymongo }
+      - { name: python-memcached }
+  alternatives:
+    - ceilometer-api
+    - ceilometer-collector
+    - ceilometer-agent-notification
+    - ceilometer-polling
+  purge_frequency: 86400
+  mongodb_database: ceilometer
+  mongodb_user: ceilometer
+  mongodb_password: "{{ secrets.mongodb_password | default('BADPASS') }}"
+  heartbeat_timeout_threshold: 30
+  collector_workers: 4
+  logs:
+    - paths:
+        - /var/log/ceilometer/*api.log
+      fields:
+        type: openstack
+        tags: ceilometer,ceilometer-api
+    - paths:
+        - /var/log/ceilometer/*agent-notification.log
+      fields:
+        type: openstack
+        tags: ceilometer,ceilometer-agent-notification
+    - paths:
+        - /var/log/ceilometer/*collector.log
+      fields:
+        type: openstack
+        tags: ceilometer,ceilometer-collector
+    - paths:
+        - /var/log/ceilometer/*polling.log
+      fields:
+        type: openstack
+        tags: ceilometer,ceilometer-polling
+  logging:
+    debug: False
+    verbose: True
+  cafile: "{{ ssl.cafile }}"
+  monitoring:
+    sensu_checks:
+      check_ceilometer_api:
+        criticality: 'critical'
+  auditing:
+    enabled: False
+    logging: False
+  libvirt_group:
+    ubuntu: libvirtd
+    rhel: libvirt

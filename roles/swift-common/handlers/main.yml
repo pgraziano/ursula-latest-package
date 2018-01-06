@@ -1,0 +1,61 @@
+---
+- name: pip install swifttool
+  pip: name=/opt/stack/{{ swift.swifttool_dir  }}
+       extra_args="-i {{ openstack.pypi_mirror | default(omit) }}"
+       virtualenv="{{ swifttool_venv|default(omit) }}"
+  register: result
+  until: result|success
+  retries: 3
+  delay: 10
+  notify:
+    - update ca-certs
+    - pip clean swifttool outside venv
+    - setup swifttool alternatives
+
+- name: pip clean swifttool outside venv
+  pip: name=swifttool state=absent
+  when: openstack_distro_type != 'osp'
+  register: result
+  until: result|succeeded
+  retries: 5
+
+- name: setup swifttool alternatives
+  alternatives: name=swifttool
+                path={{ swift.venv_dir }}/bin/swifttool
+                link=/usr/local/bin/swifttool
+  when: openstack_distro_type != 'osp'
+
+- name: update ca-certs
+  command: update-ca-certificates
+  when: ansible_distribution == 'Ubuntu'
+
+# Restarting rsync failing with pid file exists error
+# Adding retry logic to workaround
+- name: restart rsync
+  service: name="{{ ( ursula_os == 'rhel' )| ternary('rsyncd', 'rsync') }}" state=restarted
+  register: result
+  until: result|success
+  retries: 3
+  delay: 10
+
+- name: restart rsyslog
+  service: name=rsyslog state=restarted
+
+- name: restart swift services
+  service: name={{ item.name }} state=restarted must_exist=false
+  when: restart|default(True)
+  with_items:
+    - "{{ swift.services.swift_container }}"
+    - "{{ swift.services.swift_container_auditor }}"
+    - "{{ swift.services.swift_container_updater }}"
+    - "{{ swift.services.swift_container_replicator }}"
+    - "{{ swift.services.swift_account }}"
+    - "{{ swift.services.swift_account_auditor }}"
+    - "{{ swift.services.swift_account_reaper }}"
+    - "{{ swift.services.swift_account_replicator }}"
+    - "{{ swift.services.swift_proxy }}"
+    - "{{ swift.services.swift_object }}"
+    - "{{ swift.services.swift_object_expirer }}"
+    - "{{ swift.services.swift_object_auditor }}"
+    - "{{ swift.services.swift_object_replicator }}"
+    - "{{ swift.services.swift_object_updater }}"

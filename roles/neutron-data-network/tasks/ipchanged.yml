@@ -1,0 +1,54 @@
+---
+- name: install ipchanged dependencies
+  package: name=python-daemon
+  register: result
+  until: result|succeeded
+  retries: 5
+
+- name: install ipchanged script
+  template: src=usr/local/sbin/ipchanged dest=/usr/local/sbin/ipchanged
+            mode=0755
+
+- name: install ipchanged configuraion
+  template: src=etc/init/ipchanged.conf dest=/etc/init/ipchanged.conf mode=0644
+  when: ursula_os == 'ubuntu'
+
+- name: ipchanged systemd service
+  systemd_service:
+    name: ipchanged
+    type: simple
+    cmd: /usr/local/sbin/ipchanged
+    wanted_by: multi-user.target
+  when: ursula_os == 'rhel'
+
+- name: ipchanged dirs - undercloud
+  file: dest=/etc/ipchanged/{{ item }} state=directory
+  with_items:
+    - "{{ hostvars[inventory_hostname][primary_interface].device }}/{{ undercloud_floating_ip }}"
+
+- name: ipchanged dirs - floating ip
+  file: dest=/etc/ipchanged/{{ item }} state=directory
+  when: floating_ip is defined
+  with_items:
+    - "{{ ansible_default_ipv4.interface }}/{{ floating_ip }}"
+
+# Migrate Neutron services on external IP failover
+- name: configure neutron external services failover
+  template: src=etc/ipchanged/add_floating_ip mode=0755
+            dest=/etc/ipchanged/{{ ansible_default_ipv4.interface }}/{{ floating_ip }}/add
+  when: floating_ip is defined and ansible_default_ipv4.interface != hostvars[inventory_hostname][primary_interface].device
+
+# Migrate Neutron services on internal floating IP failover when controllers are not gateway
+- name: configure neutron external services failover
+  template: src=etc/ipchanged/add_floating_ip mode=0755
+            dest=/etc/ipchanged/{{ ansible_default_ipv4.interface }}/{{ undercloud_floating_ip }}/add
+  when: ansible_default_ipv4.interface == hostvars[inventory_hostname][primary_interface].device
+
+# Send gratuitous on internal floating IP failover
+- name: configure neutron internal services failover
+  template: src=etc/ipchanged/add_internal_floating_ip mode=0755
+            dest=/etc/ipchanged/{{ hostvars[inventory_hostname][primary_interface].device }}/{{ undercloud_floating_ip }}/add
+  when: ansible_default_ipv4.interface != hostvars[inventory_hostname][primary_interface].device
+
+- name: start ipchanged service
+  service: name=ipchanged state=started enabled=true

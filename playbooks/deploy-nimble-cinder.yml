@@ -1,0 +1,32 @@
+---
+- name: backup cinder database
+  hosts: controller[0]
+  tasks:
+    - shell: "mkdir -p /backup/ansible && mysqldump cinder > /backup/ansible/cinder.$(date +%s).bak"
+
+- name: install ssh keys
+  hosts: controller
+  tasks:
+    - include: ../roles/common/tasks/ssh.yml
+
+- name: install python dependencies
+  hosts: controller:cinder_volume
+  tasks:
+    - include: ../roles/common/tasks/python.yml
+
+- name: cinder code and config
+  hosts: controller:cinder_volume
+  vars_files:
+    - ../roles/rabbitmq/defaults/main.yml
+  roles:
+    - cinder-common
+
+- name: cinder-volume code and config
+  hosts: cinder_volume
+  vars_files:
+    - ../roles/rabbitmq/defaults/main.yml
+  roles:
+    - cinder-volume
+
+- name: install monitoring
+  include: ../playbooks/monitoring.yml

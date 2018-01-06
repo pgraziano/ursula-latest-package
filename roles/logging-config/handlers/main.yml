@@ -1,0 +1,8 @@
+---
+- name: restart logstash-forwarder
+  service: name=logstash-forwarder state=restarted must_exist=false
+  failed_when: false
+
+- name: restart filebeat
+  service: name=filebeat state=restarted must_exist=false
+  failed_when: false

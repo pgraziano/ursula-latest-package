@@ -1,0 +1,222 @@
+---
+ceph:
+  pylib:
+    rhel:
+      dir: /usr/lib64/python2.7/site-packages/
+      modules:
+        - rados.so
+        - rbd.so
+      oldmodules:
+        - rados.py
+        - rados.pyc
+        - rbd.py
+        - rbd.pyc
+    ubuntu:
+      dir: /usr/lib/python2.7/dist-packages/
+      modules:
+        - rados.x86_64-linux-gnu.so
+        - rbd.x86_64-linux-gnu.so
+      oldmodules:
+        - rados.py
+        - rados.pyc
+        - rbd.py
+        - rbd.pyc
+        - rados.so
+        - rbd.so
+
+  pylib_dir2:
+    rhel: /usr/lib/python2.7/site-packages/
+    ubuntu: /usr/lib/python2.7/dist-packages/
+  enabled: false
+  #disks:
+  #  - sdb
+  #  - sdc
+  #  - sdd
+  #bcache_ssd_device: sdg
+
+  version:
+    ubuntu: 10.2.3~bbc1
+    rhel: 10.2.3
+  client_version:
+    ubuntu: 10.2.*-0ubuntu0.16.04.1~cloud0
+    rhel: 10.2.3
+
+  openstack_keys:
+    - { name: client.glance, value: "mon 'allow r' osd 'allow class-read object_prefix rbd_children, allow rwx'" }
+    - { name: client.cinder, value: "mon 'allow r' osd 'allow class-read object_prefix rbd_children, allow rwx'" }
+
+  journal_guid: 45b0969e-9b03-4f30-b4c6-b4b80ceff106
+
+  mon_service:
+    ubuntu: ceph-mon-all
+    rhel: ceph-mon.target
+  osd_service:
+    ubuntu: ceph-osd-all
+    rhel: ceph-osd.target
+
+  hugepage_pkgs:
+    ubuntu:
+      - hugepages
+    rhel:
+      - libhugetlbfs
+      - libhugetlbfs-utils
+
+  # Packages
+  depend_pkgs:
+    - python-pycurl
+    - hdparm
+  osd_dep_pkgs:
+    - parted
+  bcache_pkgs:
+    - bcache-tools
+  bbg_ceph_utils_pkg: {}
+  # bbg_ceph_utils_pkg:
+  #   name: bbg-ceph-utils
+  #   version: ~
+  #   pip_extra_args: ~
+  # ubuntu and redhat have different package version connector.
+  # for ceph as example
+  #   ubuntu: apt-get install ceph-common=10.2.3
+  #   redhat: yum     install ceph-common-10.2.3
+  pkg_version_connector:
+    ubuntu: "="
+    rhel: "-"
+
+  target_pgs_per_osd: 200
+  max_pgs_per_osd: 300
+  adjust_inveral: 5 # minutes
+
+  # Ceph options
+  cephx: true
+  cephx_require_signatures: true # Kernel RBD does NOT support signatures for Kernels < 3.18!
+  cephx_cluster_require_signatures: true
+  cephx_service_require_signatures: false
+  max_open_files: 131072
+  disable_in_memory_logs: true # set this to false while enabling the options below
+  mon_osd_max_split_count: 32
+
+  # Debug logs
+  enable_debug_global: false
+  debug_global_level: 20
+  enable_debug_mon: false
+  debug_mon_level: 20
+  enable_debug_osd: false
+  debug_osd_level: 20
+  enable_debug_mds: false
+  debug_mds_level: 20
+
+  # Client options
+  rbd_cache: "true"
+  rbd_cache_writethrough_until_flush: "true"
+  rbd_concurrent_management_ops: 20
+  rbd_client_directories: false # this will create rbd_client_log_path and rbd_client_admin_socket_path directories with proper permissions, this WON'T work if libvirt and kvm are installed
+  rbd_client_log_file: /var/log/rbd-clients/qemu-guest-$pid.log # must be writable by QEMU and allowed by SELinux or AppArmor
+  rbd_client_log_path: /var/log/rbd-clients/
+  rbd_client_admin_socket_path: /var/run/ceph/rbd-clients # must be writable by QEMU and allowed by SELinux or AppArmor
+  rbd_default_features: 3
+  rbd_default_map_options: rw
+  rbd_default_format: 2
+
+  # Monitor options
+  monitor_interface: bond0
+  mon_osd_down_out_interval: 1200
+  mon_clock_drift_allowed: .15
+  mon_clock_drift_warn_backoff: 30
+  mon_osd_full_ratio: .95
+  mon_osd_nearfull_ratio: .70
+  mon_osd_report_timeout: 300
+  mon_pg_warn_max_per_osd: 0 # disable complains about low pgs numbers per osd
+  mon_osd_allow_primary_affinity: "true"
+  mon_warn_on_legacy_crush_tunables: "false"
+
+  # TCP options
+  ms_tcp_rcvbuff: 16777216
+
+  # OSD options
+  journal_size: 10000 # 10 GB
+  pool_name: default
+  pool_default_size: 3
+  pool_default_min_size: 2
+  osd_mkfs_type: xfs
+  osd_mkfs_options_xfs: -f -i size=2048
+  osd_mount_options_xfs: noatime,largeio,inode64,swalloc
+  osd_mon_heartbeat_interval: 30
+  osd_backfill_full_ratio: .95
+
+  # CRUSH
+  pool_default_crush_rule: 0
+  osd_crush_update_on_start: "true"
+
+  # Object backend
+  osd_objectstore: filestore
+
+  # Performance tuning
+  filestore_merge_threshold: 40
+  filestore_split_multiple: 8
+  osd_op_threads: 8
+  filestore_op_threads: 8
+  filestore_max_sync_interval: 30
+  osd_max_scrubs: 1
+
+  # OS tuning
+  disable_transparent_hugepage: true
+  os_tuning_params:
+    - { name: kernel.pid_max, value: 4194303 }
+    - { name: fs.file-max, value: 26234859 }
+    - { name: vm.zone_reclaim_mode, value: 0 }
+    - { name: vm.vfs_cache_pressure, value: 50 }
+    - { name: net.netfilter.nf_conntrack_max, value: 1048576 }
+    - { name: vm.swappiness, value: 0 }
+
+  # Recovery tuning
+  osd_recovery_max_active: 2
+  osd_max_backfills: 1
+  osd_recovery_op_priority: 2
+  osd_recovery_max_chunk: 1048576
+  osd_recovery_threads: 1
+
+  # Deep scrub
+  osd_scrub_sleep: .1
+  osd_disk_thread_ioprio_class: idle
+  osd_disk_thread_ioprio_priority: 0
+  osd_scrub_chunk_max: 5
+  osd_deep_scrub_stride: 1048576
+
+  # Cinder
+  cinder:
+    rbd_user: cinder
+    rbd_ceph_conf: /etc/ceph/ceph.conf
+    rbd_flatten_volume_from_snapshot: false
+    # FIXME: this variable should be set to 0 once the bug is fixed
+    # https://bugs.launchpad.net/cinder/+bug/1658037
+    rbd_max_clone_depth: 5
+    glance_api_version: 2
+
+  # Logging
+  logs:
+    - paths:
+        - /var/log/ceph/ceph-osd*.log
+      fields:
+        type: openstack
+        tags: ceph,ceph-osd
+    - paths:
+        - /var/log/ceph/ceph.audit.log
+      fields:
+        type: openstack
+        tags: ceph,ceph-audit,archive
+    - paths:
+        - /var/log/ceph/ceph.log
+      fields:
+        type: openstack
+        tags: ceph
+    - paths:
+        - /var/log/ceph/ceph-mon*.log
+      fields:
+        type: openstack
+        tags: ceph,ceph-mon
+
+  monitoring:
+    sensu_checks:
+      check_ceph_status:
+        criticality: 'critical'
+        escalate_flags: '-e "osds are down,near full osd,clock skew,mons down"'

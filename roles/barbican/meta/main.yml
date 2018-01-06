@@ -1,0 +1,36 @@
+---
+dependencies:
+  - role: openstack-meta
+  - role: endpoints
+  - role: monitoring-common
+    when: monitoring.enabled|default(True)|bool
+  - role: sensu-check
+    when: monitoring.enabled|default(True)|bool
+  - role: logging-config
+    when: logging.enabled|default(True)|bool
+    service: barbican
+    logdata: "{{ barbican.logs }}"
+  - role: openstack-source
+    project_name: barbican
+    project_rev: "{{ barbican.source.rev }}"
+    alternatives: "{{ barbican.alternatives }}"
+    system_dependencies: "{{ barbican.source.system_dependencies }}"
+    python_dependencies: "{{ barbican.source.python_dependencies }}"
+    python_post_dependencies: "{{ barbican.source.python_post_dependencies }}"
+    upper_constraints: "{{ barbican.source.upper_constraints }}"
+    when: openstack_install_method == 'source'
+  - role: openstack-package
+    project_name: barbican
+    alternatives: "{{ barbican.alternatives }}"
+    when: openstack_install_method == 'package'
+  - role: openstack-distro
+    project_name: barbican
+    project_packages: "{{ barbican.distro.project_packages }}"
+    python_post_dependencies: "{{ barbican.distro.python_post_dependencies }}"
+    when: openstack_install_method == 'distro'
+  - role: openstack-database
+    database_name: barbican
+  - role: openstack-firewall
+    rule_name: barbican
+    rules_type_input:
+      - { protocol: tcp, port: "{{ endpoints.barbican.port.haproxy_api }}" }

@@ -1,0 +1,98 @@
+---
+- name: ensure ssl.cafile is defined
+  assert:
+    that: "ssl.cafile is defined"
+    msg: "ssl.cafile must be defined based on the operating system {{ ursula_os }}"
+
+# cinder v1 / nova placement port collision check
+- name: check whether cinder is listening on port 8778
+  shell: lsof -Pni:8778 -sTCP:LISTEN | grep -q cinder
+  register: result_cinder_port
+  failed_when: false
+  changed_when: false
+
+- name: fail when cinder is listening on 8778
+  fail:
+    msg: |
+      The port for the cinder-api backend must change as it collides with
+      the placement API. Stop the cinder-api service before continuing.
+  when: result_cinder_port.rc == 0
+
+- block:
+  - name: check whether neutron-client is installed
+    command: neutron --version
+    register: result_neutron_installed
+    failed_when: false
+    changed_when: false
+
+  - name: check whether neutron endpoint exists
+    shell: . /root/stackrc; openstack endpoint list | grep neutron
+    failed_when: false
+    changed_when: false
+    register: result_neutron_endpoint
+
+  - include: neutron.yml
+    when:
+      - result_neutron_installed.rc == 0
+      - result_neutron_endpoint.rc == 0
+
+  delegate_to: "{{ groups['controller'][0] }}"
+  run_once: true
+
+# ceph cluster checks
+- block:
+  - name: check ceph installed
+    command: ceph --version
+    register: result_ceph_installed
+    failed_when: false
+    changed_when: false
+    delegate_to: "{{ groups['ceph_monitors'][0] }}"
+
+  - name: Check whether Cinder endpoint exists
+    shell: . /root/stackrc; openstack endpoint list | grep cinder
+    failed_when: false
+    changed_when: false
+    register: result_cinder_endpoint
+    delegate_to: "{{ groups['controller'][0] }}"
+
+  - include: ceph.yml
+    when:
+      - result_ceph_installed.rc == 0
+      - result_cinder_endpoint.rc == 0
+  when: ceph.enabled
+  tags: ['precheck_ceph']
+  run_once: true
+
+# individual ceph nodes checks
+- block:
+  - name: get ceph version number
+    shell: ceph --version |grep -oP "\d+\.\d+\.?\d{0,3}"
+    failed_when: false
+    changed_when: false
+    register: result
+
+  - name: fail if current ceph version is less than Jewel
+    shell: test {{ result.stdout }} \> "{{ preflight_checks.ceph_minimum_version }}"
+    changed_when: false
+    when: result.rc == 0
+  when:
+    - ceph.enabled
+    - "'ceph_monitors' in group_names or 'ceph_osds' in group_names"
+  tags: ['precheck_ceph']
+
+- include: v7k.yml
+  when: v7k.enabled
+  tags: ['precheck_v7k']
+  run_once: true
+
+- name:  Make sure that if fixed_key is defined then cinder encryption is also enabled
+  assert:
+    that: "cinder.encryption.enabled"
+  when: cinder.encryption.fixed_key
+  run_once: true
+
+- name:  Make sure that if cinder encryption is enabled, then only barbican or fixed_key is used (XOR)
+  assert:
+    that: "barbican.enabled != (cinder.encryption.fixed_key is not none)"
+  when: cinder.encryption.enabled|bool
+  run_once: true

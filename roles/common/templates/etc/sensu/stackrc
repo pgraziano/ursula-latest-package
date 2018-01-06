@@ -1,0 +1,19 @@
+export OS_PASSWORD={{ monitoring.openstack.user.password }}
+export OS_AUTH_URL={{ endpoints.auth_uri }}
+export OS_USERNAME={{ monitoring.openstack.user.username }}
+export OS_TENANT_NAME={{ monitoring.openstack.user.tenant }}
+{% if client.self_signed_cert and ursula_os == 'ubuntu' -%}
+export OS_CACERT=/opt/stack/ssl/openstack.crt
+{% else %}
+export OS_CACERT={{ ssl.cafile }}
+{% endif -%}
+export OS_NO_CACHE=True
+export NOVACLIENT_UUID_CACHE_DIR=/tmp/sensu
+export OS_VOLUME_API_VERSION=2
+# NOTE(mriedem): Take care when changing OS_COMPUTE_API_VERSION as any sensu
+# plugin code that is using the Nova CLI could break since by default the CLI
+# does version negotation and requests the latest microversion available from
+# the server based on the latest version that the client currently supports,
+# which could change request/response semantics. This is why we pin to the
+# the v2.0 API (which is deprecated) until they are brought current.
+export OS_COMPUTE_API_VERSION=2

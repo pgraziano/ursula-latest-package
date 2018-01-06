@@ -1,0 +1,41 @@
+---
+# NOTE: Glance does not know how to proxy copy-from URLs, so we should instead
+# download the image files locally and create images using the file method.
+- name: create image directory
+  file: path=/opt/stack/glance-images state=directory mode=0755
+
+- name: discover existing images
+  stat:
+    path: /opt/stack/glance-images/{{ item.filename }}
+  run_once: True
+  register: images_downloaded
+  with_items: "{{ glance.images }}"
+
+- name: download any necessary images
+  get_url:
+    url: "{{ item.0.url }}"
+    dest: "/opt/stack/glance-images/{{ item.0.filename }}"
+  run_once: True
+  when: item.1
+  with_together:
+    - "{{ glance.images }}"
+    - "{{ images_downloaded.results }}"
+
+- name: default images
+  environment:
+    PYTHONPATH: "{{ basevenv_lib_dir|default(omit) }}"
+  os_image:
+    api_timeout: 12000
+    validate_certs: "{{ validate_certs|default(omit) }}"
+    auth:
+      auth_url: "{{ endpoints.auth_uri }}"
+      project_name: admin
+      username: admin
+      password: "{{ secrets.admin_password }}"
+    container_format: bare
+    disk_format: qcow2
+    filename: "/opt/stack/glance-images/{{ item.filename }}"
+    is_public: yes
+    name: "{{ item.name }}"
+  with_items: "{{ glance.images }}"
+  run_once: true

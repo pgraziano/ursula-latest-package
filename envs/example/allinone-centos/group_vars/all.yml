@@ -1,0 +1,93 @@
+---
+stack_env: example_allinone
+floating_ip: 172.16.0.100
+ursula_os: 'rhel'
+xtradb:
+  sst_auth_password: asdf
+validate_certs: false
+percona:
+  replication: False
+
+common:
+  hwraid:
+    enabled: False
+  selinux:
+    mode: permissive
+
+sensu_checks:
+    percona:
+      check_cluster_size:
+        sudo: true
+        handler: default
+        notification: "unexpected number of mysql processes"
+        interval: 120
+        standalone: true
+        command: "percona-cluster-size.rb -d /root/.my.cnf --expected 3 --criticality critical"
+        service_owner: openstack
+        dependencies: "{{ 'keepalive' | sensu_dependencies(hostvars, groups, 'db') }}"
+        # above is incredibly ugly, but works. Creates the list below.
+        #dependencies:
+        #  - "controller1.ursula-vagrant/keepalive"
+        #  - "controller2.ursula-vagrant/keepalive"
+        #  - "compute1.ursula-vagrant/keepalive"
+      check_mysql_process:
+        handler: default
+        notification: "unexpected number of mysql processes"
+        interval: 120
+        standalone: true
+        command: "check-procs.rb -p mysql -W 1 -C 1"
+        service_owner: openstack
+      check_garbd_process:
+        handler: default
+        notification: "unexpected number of garbd processes"
+        interval: 120
+        standalone: true
+        command: "check-procs.rb -p garbd -W 1 -C 1"
+        service_owner: openstack
+
+
+logging:
+  enabled: true
+  follow:
+    enabled: true
+    global_fields:
+      customer_id: "unknown"
+      cluster_name: "unknown"
+    logs:
+      - paths:
+          - /var/log/messages
+        fields:
+          type: syslog
+  forward:
+    host: 127.0.0.1
+    port: 4560
+
+xtradb:
+  galera_version: 3
+  client_version: 56
+  server_version: 56
+
+haproxy:
+  stats_group: root
+
+keystone:
+  ldap_domain:
+    enabled: False
+    domain: users
+  uwsgi:
+    method: port
+
+heat:
+  enabled: True
+
+ironic:
+  enabled: False
+
+cinder:
+  enabled_backends: lvm,nimble
+  default_backend: nimble
+  backends:
+    - name: lvm
+      volume_driver: cinder.volume.drivers.lvm.LVMISCSIDriver
+      volume_backend_name: lvm
+      volume_group: cinder-volumes

@@ -1,0 +1,49 @@
+---
+- name: gather some extra facts
+  hosts: all
+  tags: always
+  tasks:
+  - set_fact:
+      ursula_os: 'ubuntu'
+    when: ansible_distribution == 'Ubuntu'
+  - set_fact:
+      ursula_os: 'rhel'
+    when: ansible_distribution in ['CentOS','RedHat']
+  - debug:
+      msg: "OS is {{ ansible_distribution }}"
+    failed_when: ursula_os is not defined
+
+# bandaid metadata issue
+- name: restart haproxy service
+  hosts: controller
+  tasks:
+  - name: check haproxy status
+    shell: service haproxy status
+    register: haproxy_status
+
+  - debug:
+      var: haproxy_status.stdout_lines
+
+  - service:
+      name: haproxy
+      state: restarted
+    when: '"DOWN" in haproxy_status.stdout'
+
+- name: Test basic things on all hosts
+  hosts: all
+  tasks:
+  - name: IPv6 privacy extensions are disabled
+    shell: grep 0 /proc/sys/net/ipv6/conf/all/use_tempaddr
+
+  - name: SSH password authentication is disabled
+    shell: grep 'PasswordAuthentication no' /etc/ssh/sshd_config
+
+  - name: /nonexistent should not exist
+    shell: test ! -e /nonexistent
+
+  - name: Upstart should not report any failed services
+    shell: dmesg | awk '/init. \w+ main process [0-9]+ terminated with status [0-9]+/ {print;ec=1} END{exit ec}'
+
+  - name: Running 12.04.4 LTS or greater
+    shell: bash -c '. /etc/os-release; echo -e "${VERSION}\n12.04.4" | sort -V | head -1 | egrep "^12.04.4"'
+    when: ursula_os == 'ubuntu'

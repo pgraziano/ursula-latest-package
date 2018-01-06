@@ -1,0 +1,692 @@
+# Play for upgrading from one version of OpenStack to another.
+# Heavily flavored for Mitaka to Newton for now, but useful as a model for
+# future upgrades. NOT a rolling upgrade optimized for downtime.
+#
+# Assumes ml2 networking
+---
+- name: set the facts
+  hosts: all:!vyatta-*
+  gather_facts: yes
+  tags: always
+  tasks:
+    - name: set the upgrade fact
+      set_fact:
+        upgrade: True
+
+    - name: set the git update fact
+      set_fact:
+        openstack_source:
+          git_update: yes
+
+    - name: set ursula_os if undefined
+      set_fact:
+        ursula_os: "{{ ansible_distribution | regex_replace('RedHat|CentOS', 'rhel')|lower }}"
+      when: ( ursula_os is undefined ) and
+            ( ansible_distribution in ['CentOS', 'RedHat'] or ansible_distribution == 'Ubuntu')
+
+    - name: set ssh_service fact
+      set_fact:
+        ssh_service: "{{ (ursula_os == 'ubuntu') | ternary('ssh','sshd') }}"
+
+- name: cleanups
+  hosts: all:!vyatta-*
+  gather_facts: no
+  tags: always
+  tasks:
+    - name: clean out existing apt repos
+      file:
+        path: /etc/apt/sources.list.d/
+        state: absent
+
+    - name: recreate apt sources directory
+      file:
+        path: /etc/apt/sources.list.d
+        state: directory
+        owner: root
+        group: root
+        mode: 0755
+
+- name: ensure filebeat installed
+  hosts: all:!vyatta-*
+  max_fail_percentage: 1
+  tags: logging
+  roles:
+    - role: logging
+  environment: "{{ env_vars|default({}) }}"
+  post_tasks:
+    - name: uninstall logstash-forwarder
+      package: name=logstash-forwarder state=absent
+    - name: remove logstash-forwarder process check
+      sensu_check: 
+        name: "check-logstash-forwarder-process"
+        plugin: check-procs.rb
+        state: absent
+
+- name: upgrade common bits first
+  hosts: all:!vyatta-*
+  max_fail_percentage: 1
+  tags: common
+
+  pre_tasks:
+    - name: clean all serverspec definition
+      file: dest=/etc/serverspec/spec/localhost
+            state=absent
+
+  roles:
+    - role: common
+  environment: "{{ env_vars|default({}) }}"
+
+- name: upgrade rabbit for security and performance
+  hosts: controller
+  serial: 1
+  max_fail_percentage: 1
+  tags: rabbit
+
+  tasks:
+    - name: upgrade rabbit
+      apt:
+        pkg: rabbitmq-server
+        state: latest
+      notify: restart-rabbit
+      register: result
+      until: result|succeeded
+      retries: 5
+
+  handlers:
+    - name: restart-rabbit
+      service:
+        name: rabbitmq-server
+        state: restarted
+  environment: "{{ env_vars|default({}) }}"
+
+# Do the db stuff so we have latest settings
+- name: install common percona components and gather facts
+  hosts: db
+  any_errors_fatal: true
+  roles:
+    - role: percona-common
+      tags: ['infra', 'percona', 'percona-facts']
+  environment: "{{ env_vars|default({}) }}"
+
+- name: install percona on primary
+  hosts: db[0]
+  any_errors_fatal: true
+  vars:
+    should_bootstrap_as_primary: True
+  roles:
+    - role: percona-server
+      tags: ['infra', 'percona', 'percona-primary']
+  environment: "{{ env_vars|default({}) }}"
+
+- name: install percona on secondaries
+  hosts: db:!db[0]
+  any_errors_fatal: true
+  vars:
+    should_bootstrap_as_primary: False
+  roles:
+    - role: percona-server
+      tags: ['infra', 'percona', 'percona-secondary']
+  environment: "{{ env_vars|default({}) }}"
+
+- name: install percona arbiter
+  hosts: db_arbiter
+  any_errors_fatal: true
+  roles:
+    - role: percona-arbiter
+      tags: ['infra', 'percona']
+  environment: "{{ env_vars|default({}) }}"
+
+# post upgrade mysql will be behind haproxy. Set endpoint
+# so db_sync commands will work until post upgrade
+- name: set mysql connection string port 3306
+  hosts: all:!vyatta-*
+  tasks:
+    - name: set mysql endpoint to standard port
+      set_fact:
+        endpoints:
+          db: "{{ undercloud_floating_ip }}"
+
+## OpenStack stuff now
+- name: upgrade client bits
+  hosts: all:!vyatta-*
+  max_fail_percentage: 1
+  tags: client
+
+  pre_tasks:
+    - name: remove clients for re-install
+      pip:
+        name: "{{ item }}"
+        state: absent
+      with_items:
+        - python-openstackclient
+        - python-neutronclient
+        - python-heatclient
+        - python-novaclient
+        - python-glanceclient
+        - python-cinderclient
+        - python-ceilometerclient
+        - python-swiftclient
+        - python-keystoneclient
+        - python-magnumclient
+        - python-ironicclient
+
+      register: result
+      until: result|succeeded
+      retries: 5
+
+  roles:
+    - role: client
+  environment: "{{ env_vars|default({}) }}"
+
+- name: stop the restarts
+  hosts: all:!vyatta-*
+  tags: always
+  tasks:
+    # work around Ansible 2.0 bug where parent roles do not see vars
+    # assigned to child roles
+    - name: turn restarts off
+      set_fact:
+        restart: False
+
+- name: populate ceph related vars
+  hosts: ceph_monitors[0]
+  max_fail_percentage: 1
+  any_errors_fatal: true
+  tasks:
+    - include: roles/ceph-osd/tasks/pool_names.yml
+      when: ceph.enabled
+      tags: ['ceph', 'ceph-osd']
+  environment: "{{ env_vars|default({}) }}"
+
+- name: upgrade glance
+  hosts: controller
+  max_fail_percentage: 1
+  tags: glance
+
+  pre_tasks:
+    - name: dump glance db
+      mysql_db:
+        name: glance
+        state: dump
+        target: /backup/glance-preupgrade.sql
+      run_once: True
+      tags: dbdump
+      delegate_to: "{{ groups['db'][0] }}"
+
+  roles:
+    - role: glance
+      force_sync: true
+      restart: False
+      database_create:
+        changed: false
+  environment: "{{ env_vars|default({}) }}"
+
+- include: playbooks/cinder-upgrade.yml
+  when: cinder.enabled|bool
+
+- name: upgrade heat
+  hosts: controller
+  max_fail_percentage: 1
+  tags: heat
+
+  roles:
+    - role: heat
+      force_sync: true
+      restart: False
+      database_create:
+        changed: false
+      when: heat.enabled|bool
+  environment: "{{ env_vars|default({}) }}"
+
+# Ceilometer/aodh block
+- name: upgrade aodh
+  hosts: controller
+  max_fail_percentage: 1
+  tags: aodh
+
+  pre_tasks:
+    - name: dump aodh db
+      mysql_db:
+        name: aodh
+        state: dump
+        target: /backup/aodh-preupgrade.sql
+      run_once: True
+      tags: dbdump
+      delegate_to: "{{ groups['db'][0] }}"
+      when: ceilometer.enabled|bool
+
+  roles:
+    - role: aodh
+      force_sync: true
+      restart: False
+      database_create:
+        changed: false
+      when: ceilometer.enabled|bool
+  environment: "{{ env_vars|default({}) }}"
+
+- name: stage ceilometer data software
+  hosts: compute
+  max_fail_percentage: 1
+  tags:
+    - ceilometer
+    - ceilometer-data
+
+  roles:
+    - role: ceilometer-data
+      restart: False
+      when: ceilometer.enabled|bool
+
+    - role: stop-services
+      services:
+        - ceilometer-agent-compute
+      must_exist: False
+      when: ceilometer.enabled|bool
+  environment: "{{ env_vars|default({}) }}"
+
+- name: start the restarts
+  hosts: all:!vyatta-*
+  tags: always
+  tasks:
+    # work around Ansible 2.0 bug where parent roles do not see vars
+    # assigned to child roles
+    - name: turn restarts on
+      set_fact:
+        restart: True
+
+- name: stage ceilomter control software and stop services
+  hosts: controller
+  max_fail_percentage: 1
+  tags:
+    - ceilometer
+    - ceilometer-control
+
+  roles:
+    - role: stop-services
+      services:
+        - ceilometer-agent-central
+        - ceilometer-alarm-evaluator
+        - ceilometer-alarm-notifier
+      must_exist: False
+      when: ceilometer.enabled|bool
+
+    - role: ceilometer-control
+      when: ceilometer.enabled|bool
+  environment: "{{ env_vars|default({}) }}"
+
+- name: start ceilometer data services
+  hosts: compute
+  max_fail_percentage: 1
+  tags:
+    - ceilometer
+    - ceilometer-data
+
+  tasks:
+    - name: start ceilometer data services
+      service:
+        name: ceilometer-polling
+        state: started
+      when: ceilometer.enabled|bool
+
+- name: stop the restarts
+  hosts: all:!vyatta-*
+  tags: always
+  tasks:
+    # work around Ansible 2.0 bug where parent roles do not see vars
+    # assigned to child roles
+    - name: turn restarts off
+      set_fact:
+        restart: False
+
+- name: upgrade keystone
+  hosts: controller
+  max_fail_percentage: 1
+  tags: keystone
+
+  pre_tasks:
+    - name: dump keystone db
+      mysql_db:
+        name: keystone
+        state: dump
+        target: /backup/keystone-preupgrade.sql
+      run_once: True
+      tags: dbdump
+      delegate_to: "{{ groups['db'][0] }}"
+    - name: disable keystone from haproxy
+      file:
+        path: /etc/keystone/healthcheck_disable
+        state: touch
+    - name: wait for haproxy to notice
+      pause:
+        seconds: 8
+
+  roles:
+    - role: stop-services
+      services:
+        - keystone
+    - role: keystone
+      force_sync: False
+      restart: True
+      database_create:
+        changed: False
+  environment: "{{ env_vars|default({}) }}"
+
+  post_tasks:
+    - block:
+      # These need to be seprate tasks so that expand failure doesn't
+      # continue on to migrate, unlike they would in a loop
+      - name: expand the database
+        command: keystone-manage db_sync --expand
+        run_once: true
+
+      - name: expand the database
+        command: keystone-manage db_sync --migrate
+        run_once: true
+      tags: db-migrate
+
+- name: restart keystone
+  hosts: controller
+  serial: 1
+  max_fail_percentage: 1
+  tags: keystone
+  tasks:
+    - name: restart keystone service
+      service:
+        name: keystone
+        state: restarted
+
+    - name: enable keystone for haproxy
+      file:
+        path: /etc/keystone/healthcheck_disable
+        state: absent
+
+    - name: wait for haproxy to notice
+      pause:
+        seconds: 8
+
+- name: finish keystone upgrade
+  hosts: controller[0]
+  serial: 1
+  max_fail_percentage: 1
+  tags:
+    - keystone
+    - db-migrate
+  tasks:
+    - name: contract the database
+      command: keystone-manage db_sync --contract
+
+# Nova block
+- name: stage nova control and sync db
+  hosts: controller
+  max_fail_percentage: 1
+  tags:
+    - nova
+    - nova-control
+
+  pre_tasks:
+    - name: dump nova db
+      mysql_db:
+        name: nova
+        state: dump
+        target: /backup/nova-preupgrade.sql
+      run_once: True
+      tags: dbdump
+      delegate_to: "{{ groups['db'][0] }}"
+
+  roles:
+    - role: stop-services
+      services:
+        - nova-cert
+      must_exist: False
+
+    - role: nova-control
+      force_sync: true
+      restart: False
+      database_create:
+        changed: false
+  environment: "{{ env_vars|default({}) }}"
+
+# This is a separate play as it needs multiple tasks. In the future this may
+# be possible with the "listen" capability of handlers so that multiple handers
+# can be notified. But that may not work since we need to do these serially.
+- name: restart nova control services
+  hosts: controller
+  serial: 1
+  max_fail_percentage: 1
+  tags:
+    - nova
+    - nova-control
+  tasks:
+    - name: disable nova-api from haproxy
+      file:
+        path: /etc/nova/healthcheck_disable
+        state: touch
+
+    - name: wait for haproxy to notice
+      pause:
+        seconds: 8
+
+    - name: restart nova services
+      service:
+        name: "{{ item }}"
+        state: restarted
+      with_items:
+        - nova-conductor
+        - nova-api
+        - nova-consoleauth
+        - nova-novncproxy
+        - nova-scheduler
+
+    - name: enable nova-api for haproxy
+      file:
+        path: /etc/nova/healthcheck_disable
+        state: absent
+
+    - name: wait for haproxy to notice
+      pause:
+        seconds: 8
+
+- name: upgrade nova compute
+  hosts: compute
+  max_fail_percentage: 1
+  tags:
+    - nova
+    - nova-data
+
+  roles:
+    - role: nova-data
+      restart: True
+      when: ironic.enabled == False
+  environment: "{{ env_vars|default({}) }}"
+
+# FIXME these need to be tolerant of failures perhaps, like missing service?
+# Probably needs fixing for ironic too
+- name: hup nova control processes
+  hosts: controller
+  max_fail_percentage: 1
+  tags:
+    - nova
+    - nova-control
+  tasks:
+    - name: send HUP signal to nova control processes
+      command: pkill -HUP -f bin/{{ item }}
+      with_items:
+        - nova-api
+        - nova-conductor
+        - nova-consoleauth
+        - nova-scheduler
+        - nova-novncproxy
+
+- name: hup nova control processes
+  hosts: compute
+  max_fail_percentage: 1
+  tags:
+    - nova
+    - nova-compute
+  tasks:
+    - name: send HUP signal to nova control processes
+      command: pkill -HUP -f bin/{{ item }}
+      with_items:
+        - nova-compute
+
+- name: complete online data migrations
+  hosts: controller[0]
+  max_fail_percentage: 1
+  tags:
+    - nova
+    - nova-control
+
+  tasks:
+    - name: perform online nova migrations
+      command: nova-manage db online_data_migrations
+
+# Neutron block
+- name: stage neutron core data
+  hosts: compute:network
+  max_fail_percentage: 1
+  tags:
+    - neutron
+    - neutron-data
+
+  roles:
+    - role: neutron-data
+      restart: False
+  environment: "{{ env_vars|default({}) }}"
+
+- name: stage neutron network
+  hosts: network
+  max_fail_percentage: 1
+  tags:
+    - neutron
+    - neutron-network
+
+  roles:
+    - role: neutron-data-network
+      restart: False
+  environment: "{{ env_vars|default({}) }}"
+
+- name: upgrade neutron control plane
+  hosts: controller
+  max_fail_percentage: 1
+  tags:
+    - neutron
+    - neutron-control
+
+  pre_tasks:
+    - name: dump neutron db
+      mysql_db:
+        name: neutron
+        state: dump
+        target: /backup/neutron-preupgrade.sql
+      run_once: True
+      tags: dbdump
+      delegate_to: "{{ groups['db'][0] }}"
+
+  roles:
+    - role: neutron-control
+      force_sync: true
+      restart: False
+      database_create:
+        changed: false
+  environment: "{{ env_vars|default({}) }}"
+
+- name: restart neutron data service
+  hosts: compute:network
+  max_fail_percentage: 1
+  tags:
+    - neutron
+    - neutron-data
+
+  tasks:
+    - name: restart neutron data service
+      service:
+        name: neutron-linuxbridge-agent
+        state: restarted
+
+- name: restart neutron data network services
+  hosts: network
+  max_fail_percentage: 1
+  tags:
+    - neutron
+    - neutron-network
+
+  tasks:
+    - name: restart neutron data network agent services
+      service:
+        name: "{{ item }}"
+        state: restarted
+      with_items:
+        - neutron-l3-agent
+        - neutron-dhcp-agent
+        - neutron-metadata-agent
+
+- name: upgrade swift
+  hosts: swiftnode
+  any_errors_fatal: true
+  tags: swift
+
+  roles:
+    - role: haproxy
+      haproxy_type: swift
+      tags: ['openstack', 'swift', 'control']
+
+    - role: swift-object
+      tags: ['openstack', 'swift', 'data']
+
+    - role: swift-account
+      tags: ['openstack', 'swift', 'data']
+
+    - role: swift-container
+      tags: ['openstack', 'swift', 'data']
+
+    - role: swift-proxy
+      tags: ['openstack', 'swift', 'control']
+  environment: "{{ env_vars|default({}) }}"
+
+- name: start the restarts
+  hosts: all:!vyatta-*
+  tags: always
+  tasks:
+   # work around Ansible 2.0 bug where parent roles do not see vars
+   # assigned to child roles
+    - name: turn restarts on
+      set_fact:
+        restart: True
+
+- name: upgrade horizon
+  hosts: controller
+  max_fail_percentage: 1
+  tags: horizon
+
+  roles:
+    - role: horizon
+  environment: "{{ env_vars|default({}) }}"
+# Use haproxy port for post upgrade
+- name: set mysql connection string 3307
+  hosts: all:!vyatta-*
+  tasks:
+    - name: set mysql endpoint port 3307
+      set_fact:
+        endpoints:
+          db: "{{ undercloud_floating_ip }}:3307"
+
+# post-upgrade tasks
+- hosts: controller
+  gather_facts: no
+  serial: 1
+  tasks:
+  - name: run neutron-reset on controllers
+    shell: /usr/local/bin/neutron-reset
+
+- hosts: compute
+  gather_facts: no
+  tasks:
+  - name: run neutron-reset on computes
+    shell: /usr/local/bin/neutron-reset
+
+- hosts: compute
+  gather_facts: no
+  tasks:
+  - name: restart the nova-compute service on computes
+    service:
+      name: nova-compute
+      state: restarted

@@ -1,0 +1,4 @@
+#!/bin/sh
+
+# Send gratuitous ARP to update other nodes ARP cache
+arping -A -U -I {{ hostvars[inventory_hostname][primary_interface].device }} {{ undercloud_floating_ip }} -c 10

@@ -1,0 +1,3 @@
+---
+nova:
+  compute_driver: novadocker.virt.docker.DockerDriver

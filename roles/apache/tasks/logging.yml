@@ -1,0 +1,21 @@
+---
+- name: set up log rotation for apache
+  logrotate: 
+    name: apache2 
+    path: "{{ apache_log_path[ursula_os] }}/*.log"
+  args:
+    options:
+        - daily
+        - missingok
+        - rotate 7
+        - compress
+        - delaycompress
+        - notifempty
+        - create 640 root adm
+        - sharedscripts
+        - postrotate if /etc/init.d/apache2 status > /dev/null ; then /etc/init.d/apache2 reload > /dev/null; fi;
+        - endscript
+        - prerotate if [ -d /etc/logrotate.d/httpd-prerotate ]; then run-parts /etc/logrotate.d/httpd-prerotate; fi;
+        - endscript
+  when: ursula_os == "ubuntu"
+

@@ -1,0 +1,12 @@
+---
+- name: "install {{ service }} log template"
+  template:
+    src: etc/filebeat/filebeat.d/template.yml
+    dest: "/etc/filebeat/filebeat.d/{{ service }}.yml"
+  notify: restart filebeat
+
+- name: "remove {{ service }} log template for logstash-forwarder"
+  file:
+    path: "/etc/logstash-forwarder.d/{{ service }}.conf"
+    state: absent
+  notify: restart logstash-forwarder

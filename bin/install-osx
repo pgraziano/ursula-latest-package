@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+
+set -ex 
+
+BINDIR=$(dirname $0)
+
+install_pip() {
+  which brew >/dev/null || \
+    die "This installation script requires a homebrew installation to proceed. Please see: http://mxcl.github.io/homebrew/"
+  brew install python --with-brewed-openssl
+}
+
+pip_pkgs() {
+  for pkg in $*; do
+    pip freeze | grep ${pkg} || pip install ${pkg}
+  done
+}
+
+virtualenv() {
+  sudo pip install virtualenv
+}
+
+uname | grep Darwin || die "This is not an OS X system... Aborting."
+
+which pip >/dev/null || install_pip
+
+pip install -U -r $BINDIR/../requirements.txt
+
+echo -e "\nInstallation complete!\n"

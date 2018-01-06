@@ -1,0 +1,54 @@
+---
+monitoring:
+  client_name: ~
+  client_cert: ~
+  client_key: ~
+  checks:
+    memory:
+      warning: 4096
+      critical: 1024
+    cpu:
+      warning: 80
+      critical: 99
+    disk:
+      criticality: 'critical'
+      specific_mnts_check:
+        - name: 'stackdata'
+          path: '/opt/stack/data'
+          warning: 89
+          critical: 99
+        - name: 'root'
+          path: '/'
+          warning: 80
+          critical: 90
+        - name: 'mysql'
+          path: '/var/lib/mysql'
+          warning: 70
+          critical: 80
+    network_interface_traffic:
+      state: present
+      warning: 250
+      critical: 500
+      interface: "{{ hostvars[inventory_hostname][hostvars[inventory_hostname].primary_interface|remove_vlan_tag]|net_physical_devices|join(',') }}"
+
+    gems:
+      - sys-filesystem
+  ipmi_checks:
+    enabled: False
+    criticality: 'critical'
+  graphite:
+    cluster_prefix: "stats.bbc.{{ stack_env }}.openstack"
+    host_prefix: "stats.bbc.{{ stack_env }}.{{ hostname_short|default(ansible_nodename|regex_replace('\\\\.*$', '')) }}"
+  rabbit:
+    host: 172.16.0.103
+    port: 5671
+    user: sensu
+    pass: sensu
+    vhost: /sensu
+  check_handler: pagerduty
+  metrics_handler: graphite
+  keepalive:
+    handler: default
+    thresholds:
+      warning: 40
+      critical: 60

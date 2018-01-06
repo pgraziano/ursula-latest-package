@@ -1,0 +1,38 @@
+# {{ ansible_managed }}
+
+{% if ansible_os_family == 'Debian' -%}
+127.0.0.1   localhost.localdomain localhost
+127.0.1.1   {{ hostname_fqdn }} {{ hostname_short }}
+
+# The following lines are desirable for IPv6 capable hosts
+::1     ip6-localhost ip6-loopback
+fe00::0 ip6-localnet
+ff00::0 ip6-mcastprefix
+ff02::1 ip6-allnodes
+ff02::2 ip6-allrouters
+
+{% elif ansible_os_family == 'RedHat' -%}
+127.0.0.1 {{ hostname_fqdn }} {{ hostname_short }}
+127.0.0.1 localhost.localdomain localhost
+127.0.0.1 localhost4.localdomain4 localhost4
+
+# The following lines are desirable for IPv6 capable hosts
+::1 {{ hostname_fqdn }} {{ hostname_short }}
+::1 localhost.localdomain localhost
+::1 localhost6.localdomain6 localhost6
+
+{% endif %}
+
+{% for entry in etc_hosts|default([]) -%}
+{{ entry.ip }} {{ entry.name }}
+{% endfor %}
+
+{% if 'compute' in groups %}
+{% for host in groups['compute'] if inventory_hostname in groups['compute'] %}
+{{ hostvars[host].ansible_default_ipv4.address }} {{ hostvars[host].hostname_fqdn }} {{ hostvars[host].hostname_short }}
+{% endfor %}
+{% endif %}
+
+{% if logstash_host is defined and logstash_ip is defined %}
+{{ logstash_ip }} {{ logstash_host }}
+{% endif %}

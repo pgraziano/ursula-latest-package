@@ -1,0 +1,31 @@
+---
+sources:
+    - name: meter_source
+      interval: 60
+      meters:
+          - "cpu"
+          - "network.services.lb.member"
+      sinks:
+          - meter_sink
+    - name: cpu_source
+      interval: 60
+      meters:
+          - "cpu"
+      sinks:
+          - cpu_sink
+sinks:
+    - name: meter_sink
+      transformers:
+      publishers:
+          - notifier://
+    - name: cpu_sink
+      transformers:
+          - name: "rate_of_change"
+            parameters:
+                target:
+                    name: "cpu_util"
+                    unit: "%"
+                    type: "gauge"
+                    scale: "100.0 / (10**9 * (resource_metadata.cpu_number or 1))"
+      publishers:
+          - notifier://

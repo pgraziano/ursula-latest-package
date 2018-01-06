@@ -1,0 +1,6 @@
+{
+ "issuer": "{{ item.issuer }}",
+ "authorization_endpoint": "{{ item.authorization_endpoint}}",
+ "token_endpoint": "{{ item.token_endpoint }}",
+ "introspection_endpoint": "{{ item.introspection_endpoint }}"
+}

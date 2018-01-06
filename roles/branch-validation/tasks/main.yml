@@ -1,0 +1,203 @@
+---
+- name: set auth fact
+  set_fact:
+    auth:
+      username: admin
+      project_name: admin
+      password: "{{ secrets.admin_password }}"
+      auth_url: "http://127.0.0.1:{{ endpoints.keystone_admin.port.backend_api }}/{{ endpoints.keystone.version }}"
+
+- name: create keypair
+  os_keypair:
+    auth: "{{ auth }}"
+    name: validate
+    state: present
+  register: keypair
+
+- name: persist private key
+  become: no
+  copy:
+    content: "{{ keypair.key.private_key }}"
+    dest: "{{ temp_key_dest }}"
+    mode: 0600
+  when: keypair|changed
+  delegate_to: localhost
+
+- name: create security group
+  os_security_group:
+    auth: "{{ auth }}"
+    name: validate_ssh
+    description: "validate group allowing ssh, icmp ipv4 ingress"
+    state: present
+
+- name: create security group rules
+  os_security_group_rule:
+    auth: "{{ auth }}"
+    security_group: validate_ssh
+    protocol: "{{ item.ip_protocol }}"
+    port_range_min: "{{ item.from_port }}"
+    port_range_max: "{{ item.to_port }}"
+    remote_ip_prefix: "{{ item.cidr }}"
+    state: present
+  ignore_errors: yes
+  with_items:
+    - ip_protocol: tcp
+      from_port: -1
+      to_port: -1
+      cidr: 0.0.0.0/0
+    - ip_protocol: icmp
+      from_port: -1
+      to_port: -1
+      cidr: 0.0.0.0/0
+      state: present
+
+- name: launch instances
+  os_server:
+    auth: "{{ auth }}"
+    flavor: 1
+    image: cirros
+    key_name: validate
+    auto_floating_ip: no
+    security_groups: default,validate_ssh
+    nics:
+      - net-name: internal
+    name: "validate-{{ item }}"
+    availability_zone: "{{ hostvars[item]['compute_ag']|default('nova') }}:{{ item }}"
+    wait: yes
+  with_items: "{{ groups['compute'] }}"
+  register: instances_first
+  ignore_errors: yes
+
+- name: set instances fact
+  set_fact:
+    instances: "{{ instances_first }}"
+  when: instances_first | success
+
+# Try to launch/schedule instances w/ alternate hypervisor hinting
+- name: delete failed instances
+  os_server:
+    auth: "{{ auth }}"
+    name: "{{ item.extra_data.server.name }}"
+    state: absent
+    wait: yes
+  with_items: "{{ instances.results }}"
+  when: instances_first | failed
+
+- name: relaunch instances if first launch failed
+  os_server:
+    auth: "{{ auth }}"
+    flavor: 1
+    image: cirros
+    key_name: validate
+    auto_floating_ip: no
+    security_groups: default,validate_ssh
+    nics:
+      - net-name: internal
+    name: "validate-{{ item }}"
+    availability_zone: "{{ hostvars[item]['compute_ag']|default('nova') }}:{{ item.split('.')[0] }}"
+    wait: yes
+  with_items: "{{ groups['compute'] }}"
+  register: instances_fallback
+  when: instances_first | failed
+
+- name: set instances fact
+  set_fact:
+    instances: "{{ instances_fallback }}"
+  when: instances_first | failed
+
+- name: associate a floating ip
+  os_floating_ip:
+    auth: "{{ auth }}"
+    network: external
+    server: "validate-{{ groups['compute'][0] }}"
+    reuse: true
+  register: fip
+
+- name: wait for instances to be reachable
+  become: no
+  wait_for:
+    port: 22
+    delay: 5
+    timeout: 300
+    host: "{{ fip.floating_ip.floating_ip_address }}"
+  when: not local_wait_for
+
+- name: wait for instances to be reachable
+  become: no
+  wait_for:
+    port: 22
+    delay: 5
+    timeout: 300
+    host: "{{ fip.floating_ip.floating_ip_address }}"
+  delegate_to: localhost
+  when: local_wait_for
+
+### Node connectivity tests
+# Check interconnectivity and internet connectivity before reboots
+- include: node_interconnectivity.yml
+
+- include: node_internet_connectivity.yml
+  vars:
+    ip_addr: "{{ fip.floating_ip.floating_ip_address }}"
+
+- name: persist private key to controller
+  become: no
+  copy:
+    content: "{{ keypair.key.private_key }}"
+    dest: "{{ temp_key_dest }}"
+    mode: 0600
+  when: keypair|changed
+
+# This checks connectivity for all nodes, but we're specifically checking
+# internet connectivity on nodes without floating_ip
+- name: checking internet connectivity on nodes without floating_ip
+  command: ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no
+           -o IdentityFile={{ temp_key_dest }}
+           cirros@{{ item.openstack.accessIPv4 }}
+           curl -IL --fail --connect-timeout 10 http://google.com
+  become: no
+  changed_when: false
+  register: pings
+  until: pings|success
+  delay: 1
+  retries: 5
+  with_items: "{{ instances.results }}"
+
+# Reboot checks
+- name: remove floating ip to work around non-idempotent module
+  os_floating_ip:
+    auth: "{{ auth }}"
+    network: external
+    server: "validate-{{ groups['compute'][0] }}"
+    floating_ip_address: "{{ fip.floating_ip.floating_ip_address }}"
+    state: absent
+    purge: true
+
+- include: ha.yml
+
+### Tear down
+- name: delete instances
+  os_server:
+    auth: "{{ auth }}"
+    name: "{{ item.server.name }}"
+    state: absent
+    wait: yes
+  with_items: "{{ instances.results }}"
+
+- name: delete security group
+  os_security_group:
+    auth: "{{ auth }}"
+    name: validate_ssh
+    state: absent
+
+- name: delete private key file
+  become: no
+  file:
+    dest: "{{ temp_key_dest }}"
+    state: absent
+
+- name: delete keypair
+  os_keypair:
+    auth: "{{ auth }}"
+    name: validate
+    state: absent

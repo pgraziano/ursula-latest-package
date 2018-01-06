@@ -1,0 +1,27 @@
+---
+stack_env: example_jeofd
+floating_ip: 172.16.0.100
+
+xtradb:
+  sst_auth_password: asdf
+
+cinder:
+  enabled: False
+
+heat:
+  enabled: False
+
+logging:
+  enabled: False
+
+monitoring:
+  enabled: False
+
+collectd:
+  enabled: False
+
+haproxy:
+  stats_group: root
+
+percona:
+  replication: False

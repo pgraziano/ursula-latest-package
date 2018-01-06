@@ -1,0 +1,74 @@
+---
+# wait for up to 6 hours for rebalancing
+# this is to tolerate misoperation. This doesn't happen in standard flow.
+- name: wait for ceph cluster to be in health ok state for up to 6 hours
+  shell: ceph health |grep -P '^(HEALTH_OK)|(HEALTH_WARN \d+ near full osd\(s\))$'
+  changed_when: false
+  register: result
+  until: result.rc == 0
+  retries: 360
+  delay: 60
+  when:
+    - inventory_hostname == groups['ceph_monitors'][0]
+    - ceph_scale_out | default(false)
+
+# Wait for a max of 10 minutes
+- name: wait for ceph cluster to be in health ok state
+  shell: ceph health |grep -P '^(HEALTH_OK)|(HEALTH_WARN \d+ near full osd\(s\))$'
+  changed_when: false
+  register: result
+  until: result.rc == 0
+  retries: 10
+  delay: 60
+  delegate_to: "{{ groups['ceph_monitors'][0] }}"
+
+- name: restart ceph mons
+  service: name={{ ceph.mon_service[ursula_os] }} state=restarted enabled=yes
+  when: "'ceph_monitors' in group_names"
+
+# tasks of ceph osds
+- block:
+  # Setting flags to prevent cluster from rebalancing/scrubing
+  - name: set osd noout
+    command: "{{ item }}"
+    delegate_to: "{{ groups['ceph_monitors'][0] }}"
+    with_items:
+      - ceph osd set noout
+      - ceph osd set noscrub
+      - ceph osd set nodeep-scrub
+
+  - name: restart ceph osds
+    service: name={{ ceph.osd_service[ursula_os] }} state=restarted enabled=yes
+
+  # make sure ceph osd services are up before unset noout
+  - name: make sure ceph osds are up
+    shell: test `ls /var/run/ceph/*.asok |wc -l` -eq {{ ceph.disks|length }}
+    changed_when: false
+    register: result
+    until: result.rc == 0
+    retries: 5
+    delay: 5
+
+  # Unset the osd flags
+  - name: unset osd noout
+    command: "{{ item }}"
+    delegate_to: "{{ groups['ceph_monitors'][0] }}"
+    with_items:
+      - ceph osd unset noout
+      - ceph osd unset noscrub
+      - ceph osd unset nodeep-scrub
+  when: "'ceph_osds' in group_names"
+
+- name: remove ceph restart flag
+  file: dest=/etc/ansible/facts.d/restart_ceph.fact state=absent
+
+# make sure ceph health ok after update
+- name: wait for ceph cluster to be in health ok state
+  shell: ceph health |grep -P '^(HEALTH_OK)|(HEALTH_WARN \d+ near full osd\(s\))$'
+  changed_when: false
+  register: result
+  until: result.rc == 0
+  retries: 10
+  delay: 60
+  delegate_to: "{{ groups['ceph_monitors'][0] }}"
+  when: inventory_hostname == groups['ceph_osds'][-1]

@@ -1,0 +1,80 @@
+---
+# set ceph related variables for future tasks
+- include: pool_names.yml
+  delegate_to: "{{ groups['ceph_monitors'][0] }}"
+  # there is a bug with ansible
+  # https://github.com/ansible/ansible/issues/15365
+  # delegate_facts does not work with run_once
+  # so we use inventory_hostname == play_hosts[0] instead of run_once
+  when:
+    - inventory_hostname == play_hosts[0]
+    - pool_names_completed is undefined
+  tags: ['monitoring', 'openstack', 'control', 'glance', 'cinder',
+         'cinder-data', 'nova', 'nova-data', 'data', 'openstack-setup']
+
+- name: verify disks have been provided
+  fail: msg="please provide osd disks"
+  when: ceph.disks is not defined or ceph.disks|length <= 0
+
+- name: install dependencies
+  package: name={{ item }} state=present
+  with_items:
+    - "{{ ceph.depend_pkgs }}"
+    - "{{ ceph.osd_dep_pkgs }}"
+  register: result
+  until: result|succeeded
+  retries: 5
+
+- name: install ceph osd
+  package: name=ceph-osd{{ ceph.pkg_version_connector[ursula_os] }}{{ ceph.version[ursula_os] }}
+           state=present
+  register: result
+  until: result|succeeded
+  retries: 5
+
+# FIXME: we need to remove this task once all envs are fixed
+- name: correct owner of /var/log/ceph for existing ubuntu envs
+  file: path=/var/log/ceph
+        state=directory
+        owner=ceph
+        group=ceph
+        recurse=yes
+
+- name: register admin.keyring
+  slurp: src=/etc/ceph/ceph.client.admin.keyring
+  register: admin_keyring
+  run_once: true
+  delegate_to: "{{ groups['ceph_monitors'][0] }}"
+
+- name: write admin.keyring
+  copy:
+    dest: "{{ admin_keyring['source'] }}"
+    content: "{{ admin_keyring['content'] | b64decode }}"
+
+- name: register ceph.keyring
+  slurp: src=/var/lib/ceph/bootstrap-osd/ceph.keyring
+  register: ceph_keyring
+  run_once: true
+  delegate_to: "{{ groups['ceph_monitors'][0] }}"
+
+- name: write ceph.keyring
+  copy:
+    dest: "{{ ceph_keyring['source'] }}"
+    content: "{{ ceph_keyring['content'] | b64decode }}"
+
+- name: delete default 'rbd' pool
+  command: ceph osd pool delete rbd rbd --yes-i-really-really-mean-it
+  register: poolout
+  changed_when: poolout.stdout | search('removed')
+  delegate_to: "{{ groups['ceph_monitors'][0] }}"
+  run_once: true
+
+- include: standard.yml
+  when: "'ceph_osds_ssd' in group_names"
+
+- include: bcache.yml
+  when: "'ceph_osds_hybrid' in group_names"
+
+- include: ../../ceph-monitor/tasks/restart_flags.yml
+
+- include: system_tuning.yml

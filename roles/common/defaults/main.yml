@@ -1,0 +1,220 @@
+---
+common:
+  hwraid:
+    enabled: True
+    clients:
+      - tw-cli
+      - megacli
+  ipmi:
+    enabled: True
+    serial_console: ttyS1
+    state: probe
+    baud_rate: 115200
+  ntp:
+  # client: ntpd
+    client: chrony
+    servers:
+       - 0.north-america.pool.ntp.org
+       - 1.north-america.pool.ntp.org
+       - 2.north-america.pool.ntp.org
+       - 3.north-america.pool.ntp.org
+    #  - servertime.service.softlayer.com
+    allow_subnets: [] # ['10/8', '172.16/12']
+  serial_console:
+    enabled: True
+    name: ttyS0
+    baud_rate: 9600
+  ssh_private_keys: []
+  ssh:
+    allow_from:
+      - 0.0.0.0/0
+    # FIXME Commenting for now, need to split out iptables rules for ipv6
+    #  - ::/0
+    disable_root: False
+    disable_dns: True
+    client_alive_interval: 1800
+  pip_version: 9.0.1
+  setuptools_version: system
+  ursula_monitoring:
+    path: /opt/ursula-monitoring
+    method: git # git|tar
+    git_repo: https://github.com/blueboxgroup/ursula-monitoring.git
+    git_rev: master
+    tar_url: https://github.com/blueboxgroup/ursula-monitoring/archive/master.tar.gz
+    tar_version: master
+  system_tools:
+    mcelog: True
+    ubuntu:
+      lm_sensors_package: lm-sensors
+      snmp_package: snmp
+      packages:
+        - acl
+        - auditd
+        - build-essential
+        - cdpr
+        - curl
+        - dstat
+        - ethtool
+        - git
+        - htop
+        - iftop
+        - iotop
+        - iperf
+        - iputils-arping
+        - libpam-cracklib
+        - logrotate
+        - ltrace
+        - lvm2
+        - mtr
+        - netcat
+        - pciutils
+        - pv
+        - resolvconf
+        - ruby1.9.1
+        - ruby1.9.1-dev
+        - smem
+        - socat
+        - sysstat
+        - tree
+        - vim
+        - vlan
+    rhel:
+      lm_sensors_package: lm_sensors
+      snmp_package: net-snmp-utils
+      packages:
+        - acl
+        - bind-utils
+        - cracklib
+        - curl
+        - cyrus-sasl-devel
+        - dstat
+        - ethtool
+        - git
+        - iotop
+        - iputils
+        - logrotate
+        - ltrace
+        - lvm2
+        - mlocate
+        - mtr
+        - net-tools
+        - nc
+        - traceroute
+        - tcpdump
+        - ruby
+        - ruby-devel
+        - socat
+        - sysstat
+        - tree
+        - vim
+  python:
+    base_venv: "{{ basevenv | default('/opt/openstack/base') }}"
+    shade_version: 'shade>=1.9.0,<1.21.0'
+    ubuntu:
+      system_packages:
+        - python-pip
+        - python-libxml2
+        - python-lxml
+        - python-greenlet
+        - python-openssl
+        - python2.7-dev
+        - python-httplib2
+        - python-software-properties
+        - python-virtualenv
+        - python-mysqldb
+        - python-jinja2
+        - cryptsetup
+        - libffi-dev
+        - libssl-dev
+        - libxml2-dev
+        - libxslt1-dev
+      extra_packages:
+        - pyopenssl==17.2.0
+        - python-dateutil
+    rhel:
+      system_packages:
+        - python-pip
+        - libxml2-python
+        - python-lxml
+        - python-greenlet
+        - pyOpenSSL
+        - python-devel
+        - python-httplib2
+        - python-virtualenv
+        - MySQL-python
+        - python-jinja2
+        - PyYAML
+        - cryptsetup
+        - libffi-devel
+        - openssl-libs
+        - libxml2-devel
+        - libxslt-devel
+        - openssl-devel
+        - libstdc++-static
+        - gcc-c++
+        - python-requests
+        - uwsgi-plugin-python
+      extra_packages:
+        - pytz
+        - pyopenssl
+        - python-dateutil
+  packages_to_remove:
+    - language-selector-common
+  logs:
+    - paths:
+        - /var/log/audit/audit.log
+      fields:
+        type: syslog
+        tags: audit,common
+    - paths:
+        - /var/log/sensu/sensu-client.log
+      fields:
+        type: json
+        tags: sensu
+  logging:
+    debug: False
+    verbose: True
+  monitoring:
+    sensu_checks:
+      check_lro:
+        warning: False
+        enabled: True
+        devices: "{{ hostvars[inventory_hostname][hostvars[inventory_hostname].primary_interface|remove_vlan_tag]|net_physical_devices|join(',') }}"
+      check_static_route:
+        criticality: 'critical'
+      check_raid:
+        criticality: 'critical'
+      vyatta:
+        tunnels:
+          criticality: 'critical'
+    scan_for_log_errors: False
+  os_tuning_params_clean:
+    - { name: net.ipv4.tcp_syncookies }
+    - { name: net.ipv4.tcp_synack_retries }
+
+  compliance:
+    rmusers:
+      - ftp
+      - games
+      - gopher
+  selinux:
+    enabled: True
+    mode: enforcing
+
+# Below is a ucarp config example:
+network:
+  ucarp:
+    config: []
+#    - vid:
+#      contents: |
+#        BIND_INTERFACE="bond0"
+#        PASSWORD=""
+#        SOURCE_ADDRESS=""
+#        VIP_ADDRESS=""
+#        UPSCRIPT="/usr/local/libexec/ucarp-vip-up"
+#        DOWNSCRIPT="/usr/local/libexec/ucarp-vip-down"
+#        OPTIONS="--shutdown"
+
+openstack:
+  gem_sources:
+    - https://gem-mirror.openstack.blueboxgrid.com

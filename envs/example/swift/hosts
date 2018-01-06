@@ -1,0 +1,13 @@
+[controller]
+controller1
+
+[db]
+controller1
+
+[swiftnode]
+swiftnode1
+swiftnode2
+swiftnode3
+
+[swiftnode_primary]
+swiftnode1

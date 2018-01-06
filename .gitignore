@@ -1,0 +1,16 @@
+envs/example/test
+*.pyc
+*.vdi
+*.retry
+.vagrant
+.tox
+build
+*.DS_Store
+*~
+*\#*\#
+ursula.log
+openstack
+*.swp
+*.swo
+.ssh_config
+.ssh_key

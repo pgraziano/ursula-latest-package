@@ -1,0 +1,108 @@
+---
+- name: Register keystone sp info on keystone idp
+  environment:
+    OS_IDENTITY_API_VERSION: 3
+    PYTHONPATH: "{{ basevenv_lib_dir|default(omit) }}"
+  keystone_service_provider:
+    validate_certs: "{{ validate_certs|default(omit) }}"
+    auth:
+      auth_url: "{{ endpoints.keystone.url.internal }}/{{ endpoints.keystonev3.version }}"
+      project_name: admin
+      project_domain_name: default
+      user_domain_name: default
+      username: admin
+      password: "{{ secrets.admin_password }}"
+    service_provider_id: "{{ item.id }}"
+    service_provider_url: "{{ item.service_provider_url }}"
+    service_provider_auth_url: "{{ item.service_provider_auth_url }}"
+  with_items: "{{ keystone.federation.idp.k2k.service_providers }}"
+  when: keystone.federation.idp.k2k.enabled|bool
+
+- name: create keystone identity providers
+  environment:
+    OS_IDENTITY_API_VERSION: 3
+    PYTHONPATH: "{{ basevenv_lib_dir|default(omit) }}"
+  keystone_identity_provider:
+    validate_certs: "{{ validate_certs|default(omit) }}"
+    auth:
+      auth_url: "{{ endpoints.keystone.url.internal }}/{{ endpoints.keystonev3.version }}"
+      project_name: admin
+      project_domain_name: default
+      user_domain_name: default
+      username: admin
+      password: "{{ secrets.admin_password }}"
+    identity_provider_id: "{{ item.name }}"
+    description: "{{ item.description|default(omit) }}"
+    remote_ids: "{{ item.remote_ids|default(omit) }}"
+    enabled: "{{ item.enabled|default(omit) }}"
+  with_items: "{{ keystone.federation.sp.identity_providers }}"
+
+- name: create keystone groups
+  environment:
+    OS_IDENTITY_API_VERSION: 3
+    PYTHONPATH: "{{ basevenv_lib_dir|default(omit) }}"
+  os_group:
+    validate_certs: "{{ validate_certs|default(omit) }}"
+    auth:
+      auth_url: "{{ endpoints.keystone.url.internal }}/{{ endpoints.keystonev3.version }}"
+      project_name: admin
+      project_domain_name: default
+      user_domain_name: default
+      username: admin
+      password: "{{ secrets.admin_password }}"
+    name: "{{ item.name }}"
+    description: "{{ item.description|default(omit) }}"
+  with_items: "{{ keystone.federation.sp.groups }}"
+
+- name: add role to keystone group
+  environment:
+    OS_IDENTITY_API_VERSION: 3
+    PYTHONPATH: "{{ basevenv_lib_dir|default(omit) }}"
+  os_user_role:
+    validate_certs: "{{ validate_certs|default(omit) }}"
+    auth:
+      auth_url: "{{ endpoints.keystone.url.internal }}/{{ endpoints.keystonev3.version }}"
+      project_name: admin
+      project_domain_name: default
+      user_domain_name: default
+      username: admin
+      password: "{{ secrets.admin_password }}"
+    role: "{{ item.role }}"
+    group: "{{ item.group }}"
+    project: "{{ item.project }}"
+  with_items: "{{ keystone.federation.sp.role }}"
+
+- name: create keystone federation mappings
+  environment:
+    OS_IDENTITY_API_VERSION: 3
+    PYTHONPATH: "{{ basevenv_lib_dir|default(omit) }}"
+  keystone_federation_mapping:
+    validate_certs: "{{ validate_certs|default(omit) }}"
+    auth:
+      auth_url: "{{ endpoints.keystone.url.internal }}/{{ endpoints.keystonev3.version }}"
+      project_name: admin
+      project_domain_name: default
+      user_domain_name: default
+      username: admin
+      password: "{{ secrets.admin_password }}"
+    mapping_id: "{{ item.name }}"
+    rules: "{{ item.rules }}"
+  with_items: "{{ keystone.federation.sp.mappings }}"
+
+- name: create keystone protocols
+  environment:
+    OS_IDENTITY_API_VERSION: 3
+    PYTHONPATH: "{{ basevenv_lib_dir|default(omit) }}"
+  keystone_federation_protocol:
+    validate_certs: "{{ validate_certs|default(omit) }}"
+    auth:
+      auth_url: "{{ endpoints.keystone.url.internal }}/{{ endpoints.keystonev3.version }}"
+      project_name: admin
+      project_domain_name: default
+      user_domain_name: default
+      username: admin
+      password: "{{ secrets.admin_password }}"
+    protocol_id: "{{ item.name }}"
+    identity_provider: "{{ item.identity_provider }}"
+    mapping: "{{ item.mapping }}"
+  with_items: "{{ keystone.federation.sp.protocols }}"

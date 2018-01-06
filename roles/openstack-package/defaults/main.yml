@@ -1,0 +1,5 @@
+openstack_package_version: 11.0-bbc73
+openstack_package:
+  package_name: 'openstack-{{ project_name }}-{{ openstack_package_version }}'
+  rootwrap: "{{ rootwrap|default(False)|bool }}"
+  virtualenv_base: /opt/bbc/openstack-{{ openstack_package_version }}

@@ -1,0 +1,44 @@
+---
+audit:
+  enabled: false
+  audisp:
+    active: yes
+    direction: out
+    path: builtin_syslog
+    type: builtin
+    args: LOG_LOCAL6
+    format: string
+  # The rules are copied from openstack-ansible-security and should work with ubuntu
+  rules:
+    - '-a always,exit -F arch=b32 -S settimeofday -k audit_time_rules-V-38522'
+    - '-a always,exit -F arch=b64 -S settimeofday -k audit_time_rules-V-38522'
+    - '-a always,exit -F arch=b32 -S stime -k audit_time_rules-V-38525'
+    - '-a always,exit -F arch=b64 -S adjtimex -S settimeofday -S clock_settime -k audit_time_rules-V-38525'
+    - '-a always,exit -F arch=b32 -S clock_settime -k audit_time_rules-V-38527'
+    - '-a always,exit -F arch=b64 -S clock_settime -k audit_time_rules-V-38527'
+    - '-w /etc/localtime -p wa -k audit_time_rules-V-38530'
+    - '-w /etc/group -p wa -k audit_account_changes-V-38531'
+    - '-w /etc/passwd -p wa -k audit_account_changes-V-38531'
+    - '-w /etc/gshadow -p wa -k audit_account_changes-V-38531'
+    - '-w /etc/shadow -p wa -k audit_account_changes-V-38531'
+    - '-w /etc/security/opasswd -p wa -k audit_account_changes-V-38531'
+    - '-a always,exit -F arch=b32 -S sethostname -S setdomainname -k audit_network_modifications-V-38540'
+    - '-a always,exit -F arch=b64 -S sethostname -S setdomainname -k audit_network_modifications-V-38540'
+    - '-w /etc/issue -p wa -k audit_network_modifications-V-38540'
+    - '-w /etc/issue.net -p wa -k audit_network_modifications-V-38540'
+    - '-w /etc/hosts -p wa -k audit_network_modifications-V-38540'
+    - '-w /etc/network -p wa -k audit_network_modifications-V-38540'
+    - '-w /etc/apparmor/ -p wa -k MAC-policy-V-38541'
+    - '-w /etc/apparmor.d/ -p wa -k MAC-policy-V-38541'
+    - '-a always,exit -F arch=b32 -S mount -F auid>=500 -F auid!=4294967295 -k filesystem_mount-V-38568'
+    - '-a always,exit -F arch=b32 -S mount -F auid=0 -k filesystem_mount-V-38568'
+    - '-a always,exit -F arch=b64 -S mount -F auid>=500 -F auid!=4294967295 -k filesystem_mount-V-38568'
+    - '-a always,exit -F arch=b64 -S mount -F auid=0 -k filesystem_mount-V-38568'
+    - '-w /etc/sudoers -p wa -k actions-V-38578'
+    - '-w /sbin/insmod -p x -k modules-V-38580'
+    - '-w /sbin/rmmod -p x -k modules-V-38580'
+    - '-w /sbin/modprobe -p x -k modules-V-38580'
+    - '-a always,exit -F arch=b32 -S init_module -S delete_module -k modules-V-38580'
+    - '-a always,exit -F arch=b64 -S init_module -S delete_module -k modules-V-38580'
+    - '-a always,exit -F arch=b32 -S adjtimex -k audit_time_rules-V-38635'
+    - '-a always,exit -F arch=b64 -S adjtimex -k audit_time_rules-V-38635'

@@ -1,0 +1,38 @@
+---
+- name: add any dependent repository keys from url
+  apt_key:
+    url: "{{ item.key_url }}"
+    validate_certs: "{{ item.validate_certs|default(omit) }}"
+  no_log: true
+  with_items: "{{ repos }}"
+  when:
+    - repos is defined
+    - item.key_url is defined
+  register: result
+  until: result|succeeded
+  retries: 5
+
+# things like keyrings may come as packages vs. keys
+- name: add any dependent repository key packages
+  apt:
+    pkg: "{{ item.key_package }}"
+  no_log: true
+  with_items: "{{ repos }}"
+  when:
+    - repos is defined
+    - item.key_package is defined
+  register: result
+  until: result|succeeded
+  retries: 5
+
+- name: add any dependent repositories
+  apt_repository:
+    repo: "{{ item.repo }}"
+    update_cache: yes
+    validate_certs: "{{ item.validate_certs|default(omit) }}"
+  no_log: true
+  with_items: "{{ repos }}"
+  when: repos is defined
+  register: result
+  until: result|succeeded
+  retries: 5

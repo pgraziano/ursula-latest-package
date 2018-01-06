@@ -1,0 +1,32 @@
+---
+# cinder volume
+- name: cinder-volume process check
+  sensu_process_check: service=cinder-volume
+  notify: restart sensu-client
+
+- name: iscsid process check
+  sensu_process_check: service=iscsid
+  notify: restart sensu-client
+  when: not ceph.enabled|default(false)
+
+- name: cinder volume group metrics
+  sensu_metrics_check:
+    name: cinder-vg-metrics
+    plugin: metrics-volgroup.sh
+    args: '-v cinder-volumes -s {{ monitoring.graphite.host_prefix }}'
+  notify: restart sensu-client
+  when: cinder.create_vg|bool and ( not cinder.encryption.fixed_key or (cinder.encryption.fixed_key and "compute" not in group_names) )
+
+- name: cinder volume group metrics
+  sensu_metrics_check:
+    name: cinder-vg-metrics
+    plugin: metrics-volgroup.sh
+    args: '-v cinder-volumes -s {{ monitoring.graphite.host_prefix }}'
+    state: absent
+  notify: restart sensu-client
+  when: ceph.enabled|default(false)
+
+- name: cinder-backup process check
+  sensu_process_check: service=cinder-backup
+  notify: restart sensu-client
+  when: swift.enabled|default("False")|bool

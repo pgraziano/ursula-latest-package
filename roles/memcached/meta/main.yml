@@ -1,0 +1,4 @@
+---
+dependencies:
+  - role: monitoring-common
+    when: monitoring.enabled|default(True)|bool

@@ -1,0 +1,15 @@
+# {{ ansible_managed }}
+
+# Synchronize glance images between controllers
+
+SHELL=/bin/sh
+PATH=/bin:/usr/bin
+
+{% for host in groups['controller'] %}
+{% if host != inventory_hostname %}
+# Synchronize images from {{ host }}
+* * * * * glance  flock --nonblock /tmp/glance-image-sync.lock -c "nice ionice -c3 rsync --archive --update --xattrs --bwlimit=50000 rsync://{{ hostvars[host][primary_interface]['ipv4']['address'] }}/glance/????????-????-????-????-???????????? {{ glance.sync.dir }}/"
+{% endif %}
+{% endfor %}
+# Remove all deleted glance images
+* * * * * glance  flock --timeout 60 /tmp/glance-image-sync.lock -c "mysql --defaults-file=/etc/glance/.my.cnf glance --batch -e \"SELECT value FROM image_locations WHERE value LIKE 'file://{{ glance.sync.dir }}/\%' AND deleted_at IS NOT NULL;\" | egrep '^file://' | cut -c 8- | xargs rm -f"

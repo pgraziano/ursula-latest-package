@@ -1,0 +1,51 @@
+---
+ironic:
+  virtualenv: /opt/stack/ironic
+  path: /opt/stack/ironic
+  client_rev: e611ae5f206d846e72684ba16c345653232c45c3
+  client_virtualenv: /opt/stack/python-ironicclient
+  client_path: /opt/stack/python-ironicclient
+  tftp_server: "{{ hostvars[inventory_hostname][primary_interface]['ipv4']['address'] }}"
+  dns_server: "{{ hostvars[inventory_hostname][primary_interface]['ipv4']['address'] }}"
+  http_server: "{{ hostvars[inventory_hostname][primary_interface]['ipv4']['address'] }}"
+  tftpboot_path: /tftpboot
+  httpboot_path: /httpboot
+  enabled_drivers:
+    - fake
+    - pxe_ssh
+    - pxe_ipmitool
+    - agent_ssh
+    - agent_ipmitool
+  heartbeat_timeout_threshold: 30
+  distro:
+    project_packages:
+      - openstack-ironic
+  source:
+    rev: 'stable/newton'
+    upper_constraints: '{{ openstack_meta.upper_constraints }}'
+    python_dependencies:
+      - { name: PyMySQL }
+      - { name: python-memcached }
+    system_dependencies:
+      ubuntu: []
+      rhel: []
+  alternatives:
+    - ironic-api
+    - ironic-conductor
+    - ironic-dbsync
+    - ironic-rootwrap
+  logs:
+    - paths:
+        - /var/log/ironic/ironic-api.log
+      fields:
+        type: openstack
+        tags: ironic,ironic-api
+    - paths:
+        - /var/log/ironic/ironic-conductor.log
+      fields:
+        type: openstack
+        tags: ironic,ironic-conductor
+  logging:
+    debug: False
+    verbose: True
+  cafile: "{{ ssl.cafile }}"

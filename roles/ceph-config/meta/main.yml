@@ -1,0 +1,9 @@
+---
+dependencies:
+  - role: ceph-defaults
+  - role: inspec
+    install_inspec_controls: [ceph]
+    tags: inspec
+    when:
+      - inspec.enabled|bool
+      - inspec.controls.ceph.enabled|bool

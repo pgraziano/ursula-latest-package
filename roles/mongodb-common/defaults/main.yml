@@ -1,0 +1,36 @@
+---
+mongodb:
+  version: 3.0.15
+  replica_name: mongoreplica
+  db_password: "{{ secrets.mongodb_password }}"
+  bind_ip: 0.0.0.0
+  port: 27017
+  logging:
+    debug: False
+    verbose: True
+  cafile: "{{ ssl.cafile }}"
+  endpoint_addr: "{{ hostvars[groups['mongo_db'][0]][primary_interface]['ipv4']['address'] }}"
+  logs:
+    - paths:
+        - /var/log/mongodb/mongod.log
+      fields:
+        type: mongodb
+        tags: mongodb
+  keyFile: /var/lib/mongodb/mongod.key
+  keyfile_content: |
+    rB2RGBk+XyfyJlzVnPHDHm8m1PSs9Dwa7xkX90tAv8eDdH8qMVr1xa17FOiwG19y
+    tdrtmL8Dk5jKLi1OREaUBo+Pjm6bvInICUw/8JxkYp6AEwfwUOqQytBNPSoIuUY1
+    MwsWlhQ32y2mT82GvQOiteUlaNSKE6iWh5mip/t+wThthQsMNguCVZEtA1tvdmdD
+    ulMfI3F4pdcqN5qLm3x1rimcyK/nCO0bXNYIbg5EH9DrNPqAKmQx86wEMHiXE7mD
+    nC45+dwhBhvkiF1j6axiDvzdQhNdi7ItvDov44IFvft2KMHDiIQR3BZ0niUoBOKS
+    jvf1pXF7DI1n5cL25MHLv1enK+VYIAANCRsGX9cXIu9F071YX7DEcHWp++iK7QNG
+    E6EmQixUu26QmJbuWAZQsG4q7SwHTTJkNib7Tro2MkXMR9XtCoxRBTuITf0S8zM5
+    SZFSsm1gYjR4LKtFt8kXB/eigTwenaRTsXeYYal6LQVO1eSCDJOGHG+vGuPgf4La
+    adHx48B8qY99JUiqatYnAMcl7kMZvipHasRvSShJMEGcv0OZ93pMvatKI8enoL4q
+    P30P6fIRGB84gHz+8doUSEO9H88PPbSeW4cIrPH9D5oikmw6QFu68cvhVW6u7z1n
+    BYuCZhc4y4it3Zl0l0jzLHMVYteKvADdeMBIFLUUhgsbgTFuv46SSrdpGyDlVBwT
+    Sju5uliqYKWvR2LUF4ew5dKUeNSPxEWocmv2b9YV7tQdnAalFUBkNQuuOIb4dW/p
+    KufewClJ4uDnv4ky1qSw/sJk9XZujPheSWZPxoWMNHDaiG8AUyMs/kVnqQ6WN14h
+    lQP1s+rQ2W9IrT4bXfm7QxkuJxBQ7tNieqTGQA3vlab2XyR/T3nCw+jvXOQ/45nx
+    +mod0fnFbCJWRnSMjSiEu/HLBdl8g9nw1J850Om+eHhGQEAe7J7UIxFTFN4STW+U
+    xzseQIkOpgOvi0DdyqFaEudK9s6e

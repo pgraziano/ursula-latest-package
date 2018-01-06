@@ -1,0 +1,15 @@
+---
+- name: install ceph client
+  package: name={{ item }}{{ ceph.pkg_version_connector[ursula_os] }}{{ ceph.client_version[ursula_os] }}
+           state=present
+  register: result_cephclient
+  until: result_cephclient|succeeded
+  retries: 5
+  with_items:
+    - librgw2
+    - ceph-common
+
+# set flag for ceph client upgrade
+- name: set upgrade flag true
+  set_fact:
+    cephclient_upgraded: result_cephclient.changed

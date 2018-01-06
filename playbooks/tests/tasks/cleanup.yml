@@ -1,0 +1,56 @@
+---
+- name: clean up the test stuff
+  hosts: controller[0]
+
+  tasks:
+    - name: cleanup test instance
+      environment:
+        PYTHONPATH: "{{ basevenv_lib_dir|default(omit) }}"
+      os_server:
+        auth:
+          auth_url: "{{ endpoints.auth_uri }}"
+          project_name: admin
+          username: admin
+          password: "{{ secrets.admin_password }}"
+        name: turtle-stack
+        state: absent
+      failed_when: False
+
+    - name: cleanup test security group
+      environment:
+        PYTHONPATH: "{{ basevenv_lib_dir|default(omit) }}"
+      os_security_group:
+        auth:
+          auth_url: "{{ endpoints.auth_uri }}"
+          project_name: admin
+          username: admin
+          password: "{{ secrets.admin_password }}"
+        name: turtle-sec
+        state: absent
+      failed_when: False
+
+    - name: cleanup test key-pair
+      environment:
+        PYTHONPATH: "{{ basevenv_lib_dir|default(omit) }}"
+      os_keypair:
+        auth:
+          auth_url: "{{ endpoints.auth_uri }}"
+          project_name: admin
+          username: admin
+          password: "{{ secrets.admin_password }}"
+        name: turtle-key
+        state: absent
+      failed_when: False
+
+    - name: clean up test volume
+      environment:
+        PYTHONPATH: "{{ basevenv_lib_dir|default(omit) }}"
+      os_volume:
+        auth:
+          auth_url: "{{ endpoints.auth_uri }}"
+          project_name: admin
+          username: admin
+          password: "{{ secrets.admin_password }}"
+        display_name: turtle-vol
+        state: absent
+      failed_when: False

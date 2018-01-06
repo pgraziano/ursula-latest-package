@@ -1,0 +1,30 @@
+---
+- name: ceilometer-api check
+  sensu_check: name=check-ceilometer-api plugin=check-os-api.rb
+               args="--service ceilometer --criticality {{ ceilometer.monitoring.sensu_checks.check_ceilometer_api.criticality }}"
+               only_on_ip="{{ undercloud_floating_ip | default(floating_ip) }}"
+  notify: restart sensu-client
+
+- name: ceilometer sla metrics
+  sensu_metrics_check: name=ceilometer-sla-metrics plugin=metrics-os-api.py
+                      args='-S ceilometer --scheme {{ monitoring.graphite.cluster_prefix }}'
+                      only_on_ip="{{ undercloud_floating_ip | default(floating_ip) }}"
+  notify: restart sensu-client
+
+- name: ceilometer process check
+  sensu_process_check: service={{ item }}
+  with_items:
+    - ceilometer-api
+    - ceilometer-collector
+    - ceilometer-agent-notification
+  notify: restart sensu-client
+
+- name: remove old checks
+  sensu_process_check:
+    service: "{{ item }}"
+    state: absent
+  with_items:
+    - ceilometer-agent-central
+    - ceilometer-alarm-evaluator
+    - ceilometer-alarm-notifier
+  notify: restart sensu-client

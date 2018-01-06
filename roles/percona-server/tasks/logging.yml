@@ -1,0 +1,13 @@
+---
+- name: set up log rotation for mysql
+  logrotate: name=mysql path=/var/log/mysql/*.err
+  args:
+    options:
+      - daily
+      - rotate 7
+      - missingok
+      - compress
+      - postrotate
+      - test -x /usr/bin/mysqladmin && /usr/bin/mysqladmin ping > /dev/null && /usr/bin/mysqladmin flush-logs > /dev/null
+      - endscript
+      - minsize 100k

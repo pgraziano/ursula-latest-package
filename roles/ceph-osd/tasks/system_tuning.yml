@@ -1,0 +1,42 @@
+---
+- name: disable osd directory parsing by updatedb
+  command: updatedb -e /var/lib/ceph
+  changed_when: false
+  failed_when: false
+
+# disable transparent hugepage
+- block:
+  - name: install dependencies
+    package: name={{ item }}
+    with_items: "{{ ceph.hugepage_pkgs[ursula_os] }}"
+    register: result
+    until: result|succeeded
+    retries: 5
+
+  - name: disable transparent hugepage until next reboot
+    command: hugeadm --thp-never
+  
+  - name: disable transparent hugepages permanently
+    lineinfile: dest=/etc/default/grub
+      state=present
+      regexp="^GRUB_CMDLINE_LINUX_DEFAULT=\"(.*)\"$"
+      line="GRUB_CMDLINE_LINUX_DEFAULT=\"\1 transparent_hugepage=never\""
+      backrefs=yes
+  
+  - name: update grub config with changes(debian)
+    command: update-grub
+    when: ursula_os == 'ubuntu'
+  
+  - name: update grub config with changes(redhat)
+    command: grub2-mkconfig -o /boot/grub2/grub.cfg
+    when: ursula_os == 'rhel'
+  when: ceph.disable_transparent_hugepage
+
+- name: apply operating system tuning
+  sysctl:
+    name: "{{ item.name }}"
+    value: "{{ item.value }}"
+    state: present
+    sysctl_file: /etc/sysctl.conf
+    ignoreerrors: yes
+  with_items: "{{ ceph.os_tuning_params }}"

@@ -1,0 +1,14 @@
+[controller]
+allinone
+
+[network]
+allinone
+
+[db]
+allinone
+
+[compute]
+allinone
+
+[cinder_volume]
+allinone

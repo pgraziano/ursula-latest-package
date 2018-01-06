@@ -1,0 +1,27 @@
+---
+
+# simple playbook to install an deb package w/ apt
+# USAGE: pass an extra var w/ your ansible command
+# indicating the package.
+#
+# For example, this will install the tmux packaage: 
+# ... -e package=tmux
+
+- name: install a deb package
+  hosts: all:!vyatta-*
+  any_errors_fatal: true
+  gather_facts: false
+  environment: "{{ env_vars|default({}) }}"
+
+  tasks:
+    - name: update apt index
+      apt: update_cache=yes
+      register: result
+      until: result|succeeded
+      retries: 5
+
+    - name: install package
+      apt: pkg={{ package }}
+      register: result
+      until: result|succeeded
+      retries: 5

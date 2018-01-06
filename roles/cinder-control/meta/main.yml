@@ -1,0 +1,11 @@
+---
+dependencies:
+  - role: cinder-common
+  - role: openstack-database
+    database_name: cinder
+  - role: collectd-plugin
+    when: collectd is defined and collectd.enabled|bool
+  - role: openstack-firewall
+    rule_name: cinder
+    rules_type_input:
+      - { protocol: tcp, port: "{{ endpoints.cinder.port.haproxy_api }}" }

@@ -1,0 +1,140 @@
+---
+- name: Disable firewalld
+  service:
+    name: firewalld
+    state: stopped
+    enabled: false
+  failed_when: false
+
+- name: Install iptables
+  package: name=iptables
+  register: result
+  until: result|succeeded
+  retries: 5
+
+- name: Install iptables-services
+  package: name=iptables-services
+  register: result
+  until: result|succeeded
+  retries: 5
+
+- name: Enable iptables
+  service:
+    name: iptables
+    state: started
+    enabled: true
+
+- name: persist remove default reject forward rule
+  lineinfile:
+    dest: /etc/sysconfig/iptables
+    regexp: "^-A FORWARD.*REJECT.*--reject-with icmp-host-prohibited"
+    state: absent
+    backup: yes
+
+- name: remove default reject forward rule
+  iptables:
+    table: filter
+    chain: FORWARD
+    reject_with: icmp-host-prohibited
+    state: absent
+
+- name: persist ensure iptables allows established and related traffic
+  lineinfile:
+    dest: /etc/sysconfig/iptables
+    state: present
+    regexp: "^-A INPUT.*ESTABLISHED,RELATED.*-j ACCEPT"
+    insertafter: "^:OUTPUT "
+    line: "-A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT"
+    backup: yes
+  register: iptables_changed
+
+- name: ensure iptables allows established and related traffic
+  iptables:
+    action: insert
+    table: filter
+    chain: INPUT
+    ctstate: ESTABLISHED,RELATED
+    jump: ACCEPT
+    state: present
+  when: iptables_changed.changed
+
+- name: Persist Permit SSH
+  lineinfile:
+    dest: /etc/sysconfig/iptables
+    state: present
+    regexp: "^-A INPUT.*-p {{ item.protocol }} --dport {{ item.port }}.*-j ACCEPT"
+    insertbefore: "^-A INPUT -j REJECT --reject-with icmp-host-prohibited$"
+    line: "-A INPUT -m state --state NEW -m {{ item.protocol }} -p {{ item.protocol }} --dport {{ item.port }} -j ACCEPT"
+    backup: yes
+  with_items:
+    - protocol: tcp
+      port: 22
+  register: iptables_changed
+
+- name: Permit SSH
+  iptables:
+    action: insert
+    table: filter
+    chain: INPUT
+    ctstate: NEW
+    match: tcp
+    protocol: tcp
+    destination_port: 22
+    jump: ACCEPT
+    state: present
+  when: iptables_changed.changed
+
+- name: Persist Permit SSH For Sources
+  lineinfile:
+    dest: /etc/sysconfig/iptables
+    state: present
+    regexp: "^-A INPUT.*-p tcp -s {{ item }} --dport 22.*-j ACCEPT"
+    insertbefore: "^-A INPUT -j REJECT --reject-with icmp-host-prohibited$"
+    line: "-A INPUT -m state --state NEW -m tcp -p tcp -s {{ item }} --dport 22 -j ACCEPT"
+    backup: yes
+  with_items: "{{ common.ssh.allow_from }}"
+  register: iptables_changed
+
+- name: Permit SSH For Sources
+  iptables:
+    action: insert
+    table: filter
+    chain: INPUT
+    ctstate: NEW
+    match: tcp
+    protocol: tcp
+    source: "{{ item.0 }}"
+    destination_port: 22
+    jump: ACCEPT
+    state: present
+  when: item.1.changed
+  with_together:
+    - "{{ common.ssh.allow_from }}"
+    - "{{ iptables_changed.results }}"
+
+- block:
+  - name: Persist permit unrestricted access from remainder of cluster
+    lineinfile:
+      dest: /etc/sysconfig/iptables
+      state: present
+      regexp: "^-A INPUT.*-p all -s {{ item.cidr }}.*-j ACCEPT"
+      insertbefore: "^-A INPUT -j REJECT --reject-with icmp-host-prohibited$"
+      line: "-A INPUT -m state --state NEW -p all -s {{ item.cidr }} -j ACCEPT"
+      backup: yes
+    with_items: "{{ undercloud_cidr }}"
+    register: iptables_changed
+
+  - name: permit unrestricted access from remainder of cluster
+    iptables:
+      action: insert
+      table: filter
+      chain: INPUT
+      ctstate: NEW
+      protocol: all
+      source: "{{ item.0.cidr }}"
+      jump: ACCEPT
+    when: item.1.changed
+    with_together:
+      - "{{ undercloud_cidr }}"
+      - "{{ iptables_changed.results }}"
+  when: undercloud_cidr is defined

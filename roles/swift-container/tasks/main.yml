@@ -1,0 +1,59 @@
+---
+- name: swift-container service scripts
+  upstart_service:
+      name: "{{ item.name }}"
+      user: "{{ item.user }}"
+      cmd:  "{{ item.cmd }}"
+      args: "{{ item.config_files }}"
+  with_items:
+    - "{{ swift.services.swift_container }}"
+    - "{{ swift.services.swift_container_auditor }}"
+    - "{{ swift.services.swift_container_replicator }}"
+    - "{{ swift.services.swift_container_sync }}"
+    - "{{ swift.services.swift_container_updater }}"
+  when: ursula_os == 'ubuntu'
+
+- name: openstack-swift-container-sync unit file
+  systemd_service:
+    name: "{{ item.name }}"
+    description: "{{ item.desc }}"
+    type: "{{ item.type }}"
+    user: "{{ item.user }}"
+    cmd: "{{ item.cmd }}"
+    args: "{{ item.args }}"
+    restart: "{{ item.restart }}"
+  with_items:
+    - "{{ swift.services.swift_container_sync }}"
+  when: ursula_os == 'rhel'
+
+
+- stat: path=/etc/swift/container.ring.gz
+  register: container_ring
+
+- set_fact: start_container={{ container_ring.stat.exists }}
+
+- name: container-server config
+  template: src=etc/swift/container-server.conf mode=0640
+            dest=/etc/swift/container-server.conf owner=swift group=swift
+  notify:
+    - restart-swift-container-services
+
+- name: trigger restart on upgrades
+  debug:
+    msg: "Triggering service restart for upgrade"
+  changed_when: True
+  notify: restart-swift-container-services
+  when: code_has_changed | default('False') | bool and
+        upgrade | default('False') | bool
+
+- meta: flush_handlers
+
+- name: start swift-container services
+  service: name={{ item.name }} state=started enabled=true
+  with_items:
+    - "{{ swift.services.swift_container }}"
+    - "{{ swift.services.swift_container_auditor }}"
+    - "{{ swift.services.swift_container_replicator }}"
+    - "{{ swift.services.swift_container_sync }}"
+    - "{{ swift.services.swift_container_updater }}"
+  when: start_container|bool

@@ -1,0 +1,141 @@
+---
+- include: ssh.yml
+  when: nova.enable_ssh|bool
+  tags:
+    - ssh
+
+- include: libvirt.yml
+  when: nova.compute_driver == "libvirt.LibvirtDriver"
+  tags:
+    - libvirt
+    - libvirtd
+
+- include: docker.yml
+  when: nova.compute_driver == "novadocker.virt.docker.DockerDriver"
+
+#FIXME Do we need this on RHOSP
+- name: install nova data plan requirements
+  package: name=sysfsutils
+  register: result
+  until: result|succeeded
+  retries: 5
+
+- name: set group membership for nova state_path
+  file:
+    dest: "{{ nova.state_path }}"
+    state: directory
+    owner: nova
+    group: "{{ (ursula_os == 'rhel' ) | ternary('qemu', 'nova') }}"
+    mode: 0755
+
+- name: nova instances directory
+  file:
+    dest: "{{ nova.state_path }}/instances"
+    state: directory
+    owner: nova
+    group: "{{ (ursula_os == 'rhel' ) | ternary('qemu', 'nova') }}"
+    mode: 0755
+
+- block:
+  - name: nbd module - ubuntu
+    lineinfile: dest=/etc/modules line="nbd"
+
+  - name: probe nbd - ubuntu
+    modprobe: name=nbd state=present
+  when: ursula_os == 'ubuntu'
+
+#FIXME do we need this on rhosp?
+- name: install nbd package - rhel
+  package:
+    name: nbd
+  when: ursula_os == 'rhel'
+
+- block:
+  - name: check if SMT is enabled
+    command: "ppc64_cpu --smt"
+    failed_when: False
+    changed_when: False
+    register: smt
+
+  - name: disable SMT for ppc64le
+    command: "ppc64_cpu --smt=off"
+    when: not smt.stdout|search("SMT is off")
+
+  - name: ensure that SMT is off at runtime before we startup libvirt (ppc64)
+    lineinfile: dest=/etc/default/libvirt-bin line="ppc64_cpu --smt=off"
+  when: ansible_architecture == "ppc64le"
+
+- name: enable cinder encryption
+  template: src=etc/nova/nova.cinder_encryption.conf dest=/etc/nova/nova.cinder_encryption.conf mode=0640
+            owner=root group=nova
+  notify: restart nova compute
+  when: cinder.encryption.enabled|bool
+
+- name: disable cinder encryption
+  file: dest=/etc/nova/nova.cinder_encryption.conf state=absent
+  notify: restart nova compute
+  when: not cinder.encryption.enabled|bool
+
+- name: install nova-compute service (ubuntu)
+  upstart_service:
+    name: "{{ item.name }}"
+    user: "{{ item.user }}"
+    cmd: "{{ item.cmd }}"
+    config_dirs: "{{ item.config_dirs }}"
+    envs: "{{ item.envs }}"
+  with_items:
+    - "{{ nova.services.nova_compute }}"
+  when: ursula_os == 'ubuntu'
+  notify: restart nova compute
+
+- name: install nova-compute service (rhel)
+  systemd_service:
+    name: "{{ item.name }}"
+    description: "{{ item.desc }}"
+    after: "{{ item.after }}"
+    type: "{{ item.type }}"
+    notify_access: "{{ item.notify_access|default(omit) }}"
+    user: "{{ item.user }}"
+    environments: "{{ item.environments }}"
+    cmd: "{{ item.cmd }}"
+    config_dirs: "{{ item.config_dirs }}"
+    config_files: "{{ item.config_files }}"
+    restart: "{{ item.restart }}"
+  with_items:
+    - "{{ nova.services.nova_compute }}"
+  when: ursula_os == 'rhel'
+  notify: restart nova compute
+
+- name: trigger restart on upgrades
+  debug:
+    msg: "Triggering service restart for upgrade"
+  changed_when: True
+  notify: restart nova compute
+  when: (project_package.changed or git_result.changed) and
+        upgrade | default('False') | bool
+
+- meta: flush_handlers
+
+- name: start nova-compute
+  service:
+    name: "{{ nova.services.nova_compute.name }}"
+    state: started
+    enabled: True
+  register: result
+  until: result|succeeded
+  retries: 3
+
+- include: monitoring.yml
+  tags:
+    - monitoring
+    - common
+  when: monitoring.enabled|default('True')|bool
+
+- name: /dev/kvm permissions should be 0660 for compliance
+  file:
+    dest: /dev/kvm
+    mode: 0660
+  when: ursula_os == 'rhel'
+
+- include: v7k.yml
+  when: v7k.enabled|bool and v7k.multipath.enabled|bool

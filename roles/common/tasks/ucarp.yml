@@ -1,0 +1,29 @@
+---
+- name: ensure ucarp installed
+  package:
+    name: ucarp
+    state: present
+
+- name: write ucarp config
+  copy:
+    content: "{{ item.contents }}"
+    dest: "/etc/ucarp/vip-{{ item.vid }}.conf"
+    owner: root
+    group: root
+    mode: 0644
+  with_items: "{{ network.ucarp.config | default([]) }}"
+
+- name: install custom ucarp scripts
+  template:
+    src: "usr/local/libexec/{{ item }}"
+    dest: "/usr/local/libexec/{{ item }}"
+    owner: root
+    group: root
+    mode: 0700
+  with_items:
+    - ucarp-vip-up
+    - ucarp-vip-down
+
+- name: enable ucarp
+  command: "systemctl enable ucarp@{{ item.vid }}"
+  with_items: "{{ network.ucarp.config | default([]) }}"

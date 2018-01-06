@@ -1,0 +1,39 @@
+---
+- name: "install {{ project_name }} package"
+  yum:
+    name: "{{ item }}"
+    state: present
+  register: project_package
+  until: project_package|succeeded
+  retries: 5
+  with_items: "{{ openstack_distro.project_packages }}"
+
+- name: "Install {{ project_name }} dependent packages"
+  yum:
+    name: "{{ item }}"
+    state: present
+  register: dep_package
+  until: dep_package|succeeded
+  retries: 5
+  with_items: "{{ openstack_distro.dependent_packages }}"
+
+- name: set pip args fact
+  set_fact:
+    pip_extra_args: "{{ openstack_distro.pip_extra_args|default('') }}"
+  when: openstack.pypi_mirror is defined
+
+- name: set pip proxy args
+  set_fact:
+    pip_extra_args: "{{ pip_extra_args }} -i {{ openstack.pypi_mirror }}"
+  when: openstack.pypi_mirror is defined
+
+- name: python post dependencies for project
+  pip:
+    name: "{{ item.name }}"
+    version: "{{ item.version|default(omit) }}"
+    extra_args: "{{ pip_extra_args }} {{ item.pip_extra_args|default('') }}"
+  with_items: "{{ openstack_distro.python_post_dependencies }}"
+  register: result
+  until: result|succeeded
+  retries: 5
+  no_log: true

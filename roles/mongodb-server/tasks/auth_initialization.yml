@@ -1,0 +1,40 @@
+---
+- name: backup mongod.conf
+  copy: src=/etc/mongod.conf dest=/etc/mongod.conf.bak remote_src=True
+
+- name: remove authenticate related Configuration
+  lineinfile:
+    dest: /etc/mongod.conf
+    regexp: '^#\s*noauth\s*='
+    line: 'noauth=true'
+
+- name: remove replicaSet related Configuration
+  lineinfile:
+    dest: /etc/mongod.conf
+    regexp: '^\s*keyFile\s*='
+    line: '#keyFile='
+
+- name: remove replicaSet related Configuration
+  lineinfile:
+    dest: /etc/mongod.conf
+    regexp: '^\s*replSet\s*='
+    line: '#replSet='
+
+- name: Restart mongodb service
+  service: name=mongod state=restarted
+
+- name: create administrative user admin
+  mongodb_user:
+    database: admin
+    name: admin
+    password: "{{ mongodb.db_password }}"
+    roles: "userAdminAnyDatabase,clusterAdmin"
+    login_port: "{{ mongodb.port }}"
+  no_log: true
+
+- name: Move back mongod.conf
+  copy: src=/etc/mongod.conf.bak dest=/etc/mongod.conf remote_src=True
+        owner=root group=mongodb mode=0640
+
+- name: Restart mongodb service
+  service: name=mongod state=restarted

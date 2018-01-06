@@ -1,0 +1,5 @@
+---
+dependencies:
+  - role: openstack-meta
+  - role: keystone-defaults
+  - role: endpoints

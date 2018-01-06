@@ -1,0 +1,6 @@
+{% if openstack_install_method != 'distro' %}
+cinder ALL=(root) NOPASSWD: /usr/local/bin/cinder-rootwrap
+{% else %}
+cinder ALL=(root) NOPASSWD: /bin/cinder-rootwrap
+{% endif %}
+

@@ -1,0 +1,66 @@
+---
+- name: install ceilometer controller services
+  upstart_service:
+    name: "{{ item.name }}"
+    user: "{{ item.user }}"
+    cmd: "{{ item.cmd }}"
+    args: "{{ (item.name == 'ceilometer-api') | ternary('--port %s' % endpoints.ceilometer.port.backend_api, '') }}"
+  with_items:
+    - "{{ ceilometer.services.ceilometer_api }}"
+    - "{{ ceilometer.services.ceilometer_collector }}"
+    - "{{ ceilometer.services.ceilometer_polling }}"
+    - "{{ ceilometer.services.ceilometer_notification }}"
+  notify: restart ceilometer services
+  when: ursula_os == 'ubuntu'
+
+- name: install ceilometer controller services (rhel)
+  systemd_service:
+    name: "{{ item.name }}"
+    description: "{{ item.desc }}"
+    type: "{{ item.type }}"
+    user: "{{ item.user }}"
+    cmd: "{{ item.cmd }}"
+    args: "{{ (item.name == 'openstack-ceilometer-api') | ternary('--port %s' % endpoints.ceilometer.port.backend_api, '') }}"
+    restart: "{{ item.restart }}"
+  with_items:
+    - "{{ ceilometer.services.ceilometer_api }}"
+    - "{{ ceilometer.services.ceilometer_collector }}"
+    - "{{ ceilometer.services.ceilometer_notification }}"
+    - "{{ ceilometer.services.ceilometer_polling }}"
+  when: ursula_os == 'rhel'
+
+- name: trigger restart on upgrades
+  debug:
+    msg: "Triggering service restart for upgrade"
+  changed_when: True
+  notify: restart ceilometer services
+  when: code_has_changed | default('False') | bool and
+        upgrade | default('False') | bool
+
+- name: create ceilometer user in mongodb
+  mongodb_user:
+    database: "{{ ceilometer.mongodb_database }}"
+    name: "{{ ceilometer.mongodb_user }}"
+    password: "{{ ceilometer.mongodb_password }}"
+    roles: 'readWrite,dbAdmin'
+    state: present
+    login_password: "{{ secrets.mongodb_password }}"
+    login_user: admin
+  run_once: true
+  delegate_to: "{{ groups['mongo_db'][0] }}"
+
+- meta: flush_handlers
+
+- name: start ceilometer services
+  service: name={{ item.name }} state=started enabled=True
+  with_items:
+    - "{{ ceilometer.services.ceilometer_api }}"
+    - "{{ ceilometer.services.ceilometer_collector }}"
+    - "{{ ceilometer.services.ceilometer_notification }}"
+    - "{{ ceilometer.services.ceilometer_polling }}"
+
+- include: monitoring.yml
+  tags:
+    - monitoring
+    - common
+  when: monitoring.enabled|default('True')|bool

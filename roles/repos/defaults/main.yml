@@ -1,0 +1,67 @@
+---
+repos: []
+repo: ~
+apt_repos:
+  # All key_urls should be HTTPS to ensure we are retrieving the key we are expecting too
+  docker:
+    repo: 'https://get.docker.com/ubuntu'
+    key_url: 'https://keyserver.ubuntu.com/pks/lookup?op=get&search=0xD8576A8BA88D21E9'
+  blueboxcloud_giftwrap:
+    repo: 'https://packagecloud.io/blueboxcloud/giftwrap/ubuntu/'
+    key_url: 'https://packagecloud.io/gpg.key'
+  hwraid:
+    repo: 'http://hwraid.le-vert.net/ubuntu'
+    key_url: 'http://hwraid.le-vert.net/debian/hwraid.le-vert.net.gpg.key'
+  sensu:
+    repo: 'https://sensu.global.ssl.fastly.net/apt'
+    key_url: 'https://sensu.global.ssl.fastly.net/apt/pubkey.gpg'
+    distribution: 'sensu'
+    components: 'main'
+  haproxy:
+    repo: 'http://ppa.launchpad.net/vbernat/haproxy-1.5/ubuntu'
+    key_url: 'https://keyserver.ubuntu.com/pks/lookup?op=get&search=0xCFFB779AADC995E4F350A060505D97A41C61B9CD'
+  bbg_openstack_ppa:
+    repo: 'http://ppa.launchpad.net/blueboxgroup/openstack/ubuntu'
+    key_url: 'https://keyserver.ubuntu.com/pks/lookup?op=get&search=0xC37BA5F849DE63CB'
+  percona:
+    repo: 'http://repo.percona.com/apt'
+    key_url: 'https://www.percona.com/redir/downloads/RPM-GPG-KEY-percona'
+  rabbitmq:
+    repo: 'http://www.rabbitmq.com/debian/'
+    key_url: 'https://www.rabbitmq.com/rabbitmq-release-signing-key.asc'
+  cloud_archive:
+    repo: 'http://ubuntu-cloud.archive.canonical.com/ubuntu'
+  erlang:
+    repo: 'http://packages.erlang-solutions.com/debian'
+    key_url: 'https://packages.erlang-solutions.com/debian/erlang_solutions.asc'
+  ceph:
+    repo: 'http://ceph.com/debian-'
+    key_url: 'https://download.ceph.com/keys/release.asc'
+  mongodb:
+    repo: 'http://repo.mongodb.org/apt/ubuntu'
+    key_url: 'https://docs.mongodb.org/10gen-gpg-key.asc'
+  logstash_forwarder:
+    repo: ''
+    key_url: ''
+  elastic:
+    repo: 'http://apt-mirror.openstack.blueboxgrid.com/filebeat'
+    key_url: ' http://apt-mirror.openstack.blueboxgrid.com/keys/filebeat.key'
+
+yum_repos:
+  epel:
+    package: https://dl.fedoraproject.org/pub/epel/epel-release-latest-{{ ansible_distribution_major_version }}.noarch.rpm
+  percona:
+    package: http://www.percona.com/downloads/percona-release/redhat/0.1-3/percona-release-0.1-3.noarch.rpm
+  sensu:
+    repo: http://sensu.global.ssl.fastly.net/yum/$basearch/
+    description: sensu monitoring repo
+    gpgcheck: no
+  elastic:
+    repo: https://artifacts.elastic.co/packages/5.x/yum
+    description: Filebeat repo
+    gpgcheck: yes
+    key_url: https://artifacts.elastic.co/GPG-KEY-elasticsearch
+  chef:
+    repo: https://packages.chef.io/repos/yum/stable/el/7/x86_64/
+    gpgcheck: yes
+    key_url: https://downloads.chef.io/packages-chef-io-public.key

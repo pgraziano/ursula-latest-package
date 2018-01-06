@@ -1,0 +1,3 @@
+{% for rule in audit.rules %}
+{{ rule }}
+{% endfor %}

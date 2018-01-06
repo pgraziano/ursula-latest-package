@@ -1,0 +1,253 @@
+---
+- name: create heat user
+  user: name=heat comment=heat shell=/bin/false system=yes home=/nonexistent
+        createhome=no
+
+- name: create heat environment.d directory
+  file: dest=/etc/heat/environment.d state=directory
+
+- name: create heat log directory
+  file: dest=/var/log/heat state=directory mode=0755 owner=heat
+
+- name: create heat cache dir
+  file: dest=/var/cache/heat state=directory mode=0700
+        owner=heat group=heat
+
+- name: install heat services (ubuntu)
+  upstart_service:
+    name: "{{ item.name }}"
+    user: "{{ item.user }}"
+    cmd: "{{ item.cmd }}"
+  with_items:
+    - "{{ heat.services.heat_api }}"
+    - "{{ heat.services.heat_api_cfn }}"
+    - "{{ heat.services.heat_engine }}"
+  when: ursula_os == 'ubuntu'
+
+- name: install heat services (rhel)
+  systemd_service:
+    name: "{{ item.name }}"
+    description: "{{ item.desc }}"
+    type: "{{ item.type }}"
+    user: "{{ item.user }}"
+    cmd: "{{ item.cmd }}"
+    config_dirs: "{{ item.config_dirs }}"
+    config_files: "{{ item.config_files }}"
+    restart: "{{ item.restart }}"
+  with_items:
+    - "{{ heat.services.heat_api }}"
+    - "{{ heat.services.heat_api_cfn }}"
+    - "{{ heat.services.heat_engine }}"
+  when: ursula_os == 'rhel'
+
+- name: heat config
+  template: src=etc/heat/{{ item }} dest=/etc/heat/{{ item }} mode=0640 owner=root group=heat
+  with_items:
+    - heat.conf
+    - policy.json
+    - api-paste.ini
+    - heat_api_audit_map.conf
+  notify:
+    - restart heat services
+
+- name: copy policy files to openstack-dashboard
+  template:
+    src: "etc/heat/policy.json"
+    dest: "/etc/openstack-dashboard/heat_policy.json"
+    owner: "root"
+    group: "{{ openstack_meta.apache[ursula_os].group }}"
+    mode: 0640
+  when: inventory_hostname in groups['controller']
+
+- block:
+  - name: create heat stack user
+    environment:
+      OS_IDENTITY_API_VERSION: 3
+      OS_USER_DOMAIN_NAME: default
+      OS_PROJECT_DOMAIN_NAME: default
+      PYTHONPATH: "{{ basevenv_lib_dir|default(omit) }}"
+    os_user:
+      name: heat_stack_user
+      password: "{{ secrets.service_password }}"
+      default_project: admin
+      domain: default
+      validate_certs: "{{ validate_certs|default(omit) }}"
+      auth:
+        auth_url: "{{ endpoints.keystone.url.internal }}/v3"
+        project_name: admin
+        username: admin
+        password: "{{ secrets.admin_password }}"
+    run_once: true
+
+  - name: create heat stack role
+    environment:
+      OS_IDENTITY_API_VERSION: 3
+      OS_USER_DOMAIN_NAME: default
+      OS_PROJECT_DOMAIN_NAME: default
+      PYTHONPATH: "{{ basevenv_lib_dir|default(omit) }}"
+    os_keystone_role:
+      name: heat_stack_user
+      validate_certs: "{{ validate_certs|default(omit) }}"
+      auth:
+        auth_url: "{{ endpoints.keystone.url.internal }}/v3"
+        project_name: admin
+        project_domain_name: default
+        user_domain_name: default
+        username: admin
+        password: "{{ secrets.admin_password }}"
+
+  - name: create heat stack user role
+    environment:
+      OS_IDENTITY_API_VERSION: 3
+      OS_USER_DOMAIN_NAME: default
+      OS_PROJECT_DOMAIN_NAME: default
+      PYTHONPATH: "{{ basevenv_lib_dir|default(omit) }}"
+    os_user_role:
+      role: heat_stack_user
+      user: heat_stack_user
+      project: admin
+      validate_certs: "{{ validate_certs|default(omit) }}"
+      auth:
+        auth_url: "{{ endpoints.keystone.url.internal }}/v3"
+        project_name: admin
+        project_domain_name: default
+        user_domain_name: default
+        username: admin
+        password: "{{ secrets.admin_password }}"
+
+  - name: create heat trusts roles
+    environment:
+      OS_IDENTITY_API_VERSION: 3
+      OS_USER_DOMAIN_NAME: default
+      OS_PROJECT_DOMAIN_NAME: default
+      PYTHONPATH: "{{ basevenv_lib_dir|default(omit) }}"
+    os_keystone_role:
+      name: "{{ item }}"
+      validate_certs: "{{ validate_certs|default(omit) }}"
+      auth:
+        auth_url: "{{ endpoints.keystone.url.internal }}/v3"
+        project_name: admin
+        project_domain_name: default
+        user_domain_name: default
+        username: admin
+        password: "{{ secrets.admin_password }}"
+    with_items:
+      - heat_stack_owner
+      - heat_stack_user
+
+  - name: assign admin heat roles
+    environment:
+      OS_IDENTITY_API_VERSION: 3
+      PYTHONPATH: "{{ basevenv_lib_dir|default(omit) }}"
+    os_user_role:
+      role: heat_stack_owner
+      validate_certs: "{{ validate_certs|default(omit) }}"
+      user: admin
+      project: admin
+      auth:
+        auth_url: "{{ endpoints.keystone.url.internal }}/v3"
+        project_name: admin
+        project_domain_name: default
+        user_domain_name: default
+        username: admin
+        password: "{{ secrets.admin_password }}"
+
+  - name: create heat domain
+    environment:
+      OS_IDENTITY_API_VERSION: 3
+      PYTHONPATH: "{{ basevenv_lib_dir|default(omit) }}"
+    os_keystone_domain:
+      validate_certs: "{{ validate_certs|default(omit) }}"
+      name: heat
+      auth:
+        auth_url: "{{ endpoints.keystone.url.internal }}/v3"
+        project_name: admin
+        project_domain_name: default
+        user_domain_name: default
+        username: admin
+        password: "{{ secrets.admin_password }}"
+    register: heat_domain
+
+  - name: remove heat domain user from default domain
+    environment:
+      OS_IDENTITY_API_VERSION: 3
+      PYTHONPATH: "{{ basevenv_lib_dir|default(omit) }}"
+    shell: . /root/stackrc; openstack --os-auth-url "{{ endpoints.keystone.url.internal }}/v3" user delete --domain default heat_domain_admin
+    register: remove_heat_admin
+    failed_when: remove_heat_admin|failed and
+                 "No user with a name or ID" not in remove_heat_admin.stderr|default('')
+
+  - name: create heat domain admin user
+    environment:
+      OS_IDENTITY_API_VERSION: 3
+      PYTHONPATH: "{{ basevenv_lib_dir|default(omit) }}"
+    os_user:
+      name: heat_domain_admin
+      password: "{{ secrets.stack_domain_admin_password }}"
+      validate_certs: "{{ validate_certs|default(omit) }}"
+      domain: "{{ heat_domain.domain.id }}"
+      auth:
+        auth_url: "{{ endpoints.keystone.url.internal }}/v3"
+        project_name: admin
+        project_domain_name: default
+        user_domain_name: default
+        username: admin
+        password: "{{ secrets.admin_password }}"
+    register: heat_admin_user
+    failed_when: heat_admin_user|failed and
+                 "409" not in heat_admin_user.msg|default('')
+
+  - name: add admin role to the heat domain admin user
+    environment:
+      OS_IDENTITY_API_VERSION: 3
+      PYTHONPATH: "{{ basevenv_lib_dir|default(omit) }}"
+    shell: . /root/stackrc; openstack --os-auth-url "{{ endpoints.keystone.url.internal }}/v3" role add --domain "{{ heat_domain.domain.id }}" --user "{{ heat_admin_user.user.id }}" admin
+    when: heat.enabled|bool and heat_admin_user|changed
+  run_once: true
+
+- name: stop heat services before db sync
+  service: name={{ item.name }} state=stopped
+  when: (database_create.changed or force_sync|default('false')|bool)
+  with_items:
+    - "{{ heat.services.heat_api }}"
+    - "{{ heat.services.heat_api_cfn }}"
+    - "{{ heat.services.heat_engine }}"
+  tags: db-migrate
+
+- name: sync heat database
+  command: heat-manage db_sync
+  when: database_create.changed or force_sync|default('false')|bool
+  run_once: true
+  changed_when: true
+  notify:
+    - restart heat services
+  # we want this to always be changed so that it can notify the service restart
+  tags: db-migrate
+
+- name: trigger restart on upgrades
+  debug:
+    msg: "Triggering service restart for upgrade"
+  changed_when: True
+  notify: restart heat services
+  when: code_has_changed | default('False') | bool and
+        upgrade | default('False') | bool
+
+- meta: flush_handlers
+
+- name: start heat services
+  service: name={{ item.name }} state=started enabled=true
+  with_items:
+    - "{{ heat.services.heat_api }}"
+    - "{{ heat.services.heat_api_cfn }}"
+    - "{{ heat.services.heat_engine }}"
+
+- include: monitoring.yml
+  tags:
+    - monitoring
+    - common
+  when: monitoring.enabled|default('True')|bool
+
+- include: logging.yml
+  tags:
+    - logrotate
+    - logging

@@ -1,0 +1,18 @@
+---
+#
+# NOTE: this file is included by the prereboot tag, as such it should work not include anything that will break older releases
+#
+- name: install ipmitool
+  package: name=ipmitool
+  register: result
+  until: result|succeeded
+  retries: 5
+
+- name: load kernel ipmi modules
+  modprobe: name={{ item }} state={{ common.ipmi.state }}
+  with_items:
+    - ipmi_devintf
+    - ipmi_si
+
+- include: serial-console.yml tty={{ common.ipmi.serial_console }} baud_rate={{ common.ipmi.baud_rate }}
+  when: ansible_distribution == 'Ubuntu'

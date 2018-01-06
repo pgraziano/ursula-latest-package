@@ -1,0 +1,82 @@
+#!/bin/bash -x
+
+# if in jenkins, make the venv from the workspace and build ID
+# to allow concurrent runs.
+if [[ "$CI" == "jenkins" ]]; then
+    VENV=$WORKSPACE/venv
+    USE_PRIVATE_IPS="true"
+    virtualenv $VENV
+    source $VENV/bin/activate
+    pip install -U pip
+    pip install -U -r requirements.txt
+fi
+
+source $(dirname $0)/common
+
+USE_PRIVATE_IPS=${USE_PRIVATE_IPS:-"false"}
+
+${ROOT}/test/check-deps
+
+if $RUN_CLEANUP; then
+  echo "deleting heat stack to destroy resources including VMs: ${VMS}"
+  ${ROOT}/test/cleanup
+fi
+
+echo "testenv_instance_prefix: ${testenv_instance_prefix}"
+echo "testenv_heat_stack_name: ${testenv_heat_stack_name}"
+
+echo "create inventory directory"
+rm -rf ${ENV_DIR}
+mkdir -p ${ENV_DIR}
+cp -r ${ROOT}/envs/example/${TEST_ENV}/* ${ENV_DIR}
+
+cat <<eof >>  ${ENV_DIR}/group_vars/all.yml
+testenv_instance_prefix: ${testenv_instance_prefix}
+testenv_keypair_name: ${KEY_NAME}
+testenv_keypair_path: ${KEY_PATH}
+eof
+
+echo "booting ${VMS} by heat, then copy files for pre-deployment"
+extra_args="--ursula-debug --provisioner=heat --heat-stack-name=${testenv_heat_stack_name} --ursula-user=${LOGIN_USER} --heat-parameters ${EXTRA_HEAT_PARAMS}"
+ursula ${extra_args} "${ENV_DIR}" ${ROOT}/playbooks/${TEST_ENV}/tasks/pre-deploy.yml -u ${LOGIN_USER} "$@" -vvvv
+
+#.ssh_config is only used by heat provider. After VMs are setup, ssh_config will be used.
+mv ${ENV_DIR}/.ssh_config ${ENV_DIR}/ssh_config
+
+if [[ ${TEST_ENV} == "ci-ceph-swift-ubuntu" || ${TEST_ENV} == "ci-ceph-swift-rhel" ]]; then
+  echo "generating ring_definition.yml file for swift ..."
+  swift_0_ip="$(private_ip ${SWIFT_0_NAME})"
+  swift_1_ip="$(private_ip ${SWIFT_1_NAME})"
+  swift_2_ip="$(private_ip ${SWIFT_2_NAME})"
+  cat > ${ENV_DIR}/ring_definition.yml <<eof
+---
+part_power: 13
+replicas: 3
+min_part_hours: 1
+zones:
+  z1:
+    ${swift_0_ip}:
+      disks:
+        - vdb1
+  z2:
+    ${swift_1_ip}:
+      disks:
+        - vdb1
+  z3:
+    ${swift_2_ip}:
+      disks:
+        - vdb1
+eof
+fi
+
+#workaround security group issue for defect 344951 and security rules can take effect after retouch securitygroup
+
+secgroup=$(openstack security group list|grep ${SECURITYGROUP_NAME})
+secgroup_id=$(echo ${secgroup}|awk '{print $2}')
+
+openstack security group rule create  --protocol tcp --ingress --dst-port 23:23 --remote-ip 192.168.1.1/32 ${secgroup_id}
+secgroup_rule_id=$(openstack security group rule list|grep 192.168.1.1/32|awk '{print $2}')
+openstack security group rule delete ${secgroup_rule_id}
+
+ring_bell
+echo "vms are up: ${VMS} !!"

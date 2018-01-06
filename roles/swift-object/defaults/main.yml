@@ -1,0 +1,8 @@
+---
+swift_object:
+  ip: "{{ primary_ip }}"
+  port: 6000
+  workers: "{{ swift.cluster.no_workers }}"
+  replicators: "{{ swift.cluster.no_replicators }}"
+  auditors: "{{ swift.cluster.no_auditors }}"
+  updaters: "{{ swift.cluster.no_updaters }}"

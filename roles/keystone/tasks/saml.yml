@@ -1,0 +1,55 @@
+---
+- name: install libapache2-mod-shib2
+  apt: name=libapache2-mod-shib2 state=present
+  register: result
+  until: result|succeeded
+  retries: 5
+
+- name: install shibboleth private key
+  template: src=etc/shibboleth/sp-key.pem dest=/etc/shibboleth/sp-key.pem
+  notify: restart shibboleth
+
+- name: install shibboleth public certificate
+  template: src=etc/shibboleth/sp-cert.pem dest=/etc/shibboleth/sp-cert.pem
+  notify: restart shibboleth
+
+- name: configure shibboleth identity attributes
+  template: src=etc/shibboleth/attribute-map.xml
+            dest=/etc/shibboleth/attribute-map.xml
+  notify: restart shibboleth
+
+- name: Create idp metadata file
+  template: src=etc/shibboleth/idp_metadata.xml
+            dest=/etc/shibboleth/idp_metadata.xml
+  when: keystone.federation.sp.saml.providers[0].metadata_provider_type|default('url') == 'file'
+  notify: restart shibboleth
+
+- name: configure shibboleth settings
+  template:
+    src: etc/shibboleth/shibboleth2.xml
+    dest: /etc/shibboleth/shibboleth2.xml
+  notify: restart shibboleth
+
+- name: set shibboleth conf file permissions
+  file:
+    path: /etc/shibboleth/
+    owner: _shibd
+    group: _shibd
+    mode: 0640
+  notify: restart shibboleth
+
+- name: set shibboleth conf folder permissions
+  file:
+    path: /etc/shibboleth/
+    owner: _shibd
+    group: _shibd
+    mode: 0755
+    state: directory
+  notify: restart shibboleth
+
+- name: add apache user to _shibd group
+  user: name=www-data shell=/bin/bash groups=_shibd append=yes
+
+- name: enable apache mod shib2
+  apache2_module: name=shib2
+  notify: reload apache

@@ -1,0 +1,23 @@
+---
+- name: get installed ceph version
+  shell: ceph --version |grep -oP "\d+\.\d+\.?\d{0,3}"
+  changed_when: false
+  register: result_ceph_installed_version
+
+# result_ceph_running_version is only used for ceph monitors and osds
+- name: get running ceph version
+  shell: ceph daemon `ls /var/run/ceph/*.asok | head -n1` version |grep -oP "\d+\.\d+\.?\d{0,3}"
+  changed_when: false
+  failed_when: false
+  register: result_ceph_running_version
+
+# set restart flag for ceph in case we fail before restarting ceph
+# 2. if ceph is installed but not running, we regard it as upgrade
+- block:
+  - name: set ceph restart flag
+    copy: dest=/etc/ansible/facts.d/restart_ceph.fact content='true'
+
+  - name: re-read facts after adding custom fact
+    setup: filter=ansible_local
+  when: result_ceph_running_version.rc != 0 or
+        result_ceph_running_version.stdout < result_ceph_installed_version.stdout

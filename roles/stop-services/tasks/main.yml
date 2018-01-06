@@ -1,0 +1,7 @@
+---
+- name: stop services
+  service:
+    name: "{{ item }}"
+    state: stopped
+    must_exist: "{{ must_exist|default(omit) }}"
+  with_items: "{{ services|default([]) }}"

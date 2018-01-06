@@ -1,0 +1,5 @@
+PATH=/sbin:/usr/sbin:/bin:{{ (ursula_os == 'rhel' ) | ternary('/usr/bin/', '/usr/local/bin/') }}
+
+
+# Drop the tokens every 5 minutes
+*/5 * * * * root if ip a | grep {{ undercloud_floating_ip | default(floating_ip) }} > /dev/null 2>&1; then keystone-manage token_flush; fi

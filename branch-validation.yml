@@ -1,0 +1,20 @@
+# Playbook for validating a branch for release tagging
+# interactive, may prompt runner to affirm things have completed
+---
+- name: Run rally and validate
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: run rally
+      pause:
+        prompt: "Was rally validation run successful? (yes/no)"
+      register: rally
+
+    - name: assert rally successful
+      assert:
+        that: rally.user_input|bool
+
+- name: test instance connectivity
+  hosts: controller[0]
+  roles:
+    - branch-validation

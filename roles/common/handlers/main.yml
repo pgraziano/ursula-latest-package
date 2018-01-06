@@ -1,0 +1,39 @@
+---
+- name: update timezone
+  command: dpkg-reconfigure --frontend noninteractive tzdata
+
+- name: refresh CAs
+  command: update-ca-certificates
+  when: ursula_os == 'ubuntu'
+
+- name: refresh rhel CAs
+  command: /bin/update-ca-trust extract
+  when: ursula_os == 'rhel'
+
+- name: apply-sysctl
+  shell: "cat /etc/sysctl.d/*.conf /etc/sysctl.conf | sysctl -e -p -"
+
+- name: update grub config
+  command: /usr/sbin/update-grub
+
+- name: reload-sshd
+  service:
+    name: "{{ ssh_service }}"
+    state: restarted
+
+- name: restart-ntp
+  service: name="{{ ntpd_service_name }}" state=restarted
+
+- name: restart-chrony
+  service: name="{{ chrony_service_name }}" state=restarted
+
+- name: load sensors
+  shell: /usr/sbin/sensors-detect < /dev/null
+
+- name: update apt index
+  apt: update_cache=yes
+  register: result
+  until: result|succeeded
+  retries: 5
+  when: ursula_os == 'ubuntu'
+  

@@ -1,0 +1,9 @@
+---
+stack_env: example_novadocker
+floating_ip: 172.16.0.100
+
+xtradb:
+  sst_auth_password: asdf
+
+glance:
+  container_formats: ami,ari,aki,bare,ovf,docker

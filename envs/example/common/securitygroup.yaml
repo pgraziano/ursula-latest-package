@@ -1,0 +1,107 @@
+heat_template_version: 2013-05-23
+
+parameters:
+
+  security_group_name:
+    type: string
+    description: Name of the security group to use for servers
+    default: CI-local-TEST-master_ursula
+
+resources:
+
+  ci_securitygroup:
+    type: OS::Neutron::SecurityGroup
+    properties:
+      description: Security group for servers of Ursula Tests
+      name: { get_param: security_group_name }
+      rules:
+        - remote_ip_prefix: 0.0.0.0/0
+          protocol: tcp
+          port_range_min: 22
+          port_range_max: 22
+        - remote_ip_prefix: 0.0.0.0/0
+          protocol: tcp
+          port_range_min: 80
+          port_range_max: 80
+        - remote_ip_prefix: 0.0.0.0/0
+          protocol: tcp
+          port_range_min: 443
+          port_range_max: 443
+        - remote_ip_prefix: 0.0.0.0/0
+          protocol: tcp
+          port_range_min: 35357
+          port_range_max: 35357
+        - remote_ip_prefix: 0.0.0.0/0
+          protocol: tcp
+          port_range_min: 5000
+          port_range_max: 5000
+        - remote_ip_prefix: 0.0.0.0/0
+          protocol: tcp
+          port_range_min: 5001
+          port_range_max: 5001
+        - remote_ip_prefix: 0.0.0.0/0
+          protocol: tcp
+          port_range_min: 4789
+          port_range_max: 4789
+        - remote_ip_prefix: 0.0.0.0/0
+          protocol: tcp
+          port_range_min: 8004
+          port_range_max: 8004
+        - remote_ip_prefix: 0.0.0.0/0
+          protocol: tcp
+          port_range_min: 8001
+          port_range_max: 8001
+        - remote_ip_prefix: 0.0.0.0/0
+          protocol: tcp
+          port_range_min: 8042
+          port_range_max: 8042
+        - remote_ip_prefix: 0.0.0.0/0
+          protocol: tcp
+          port_range_min: 6080
+          port_range_max: 6080
+        - remote_ip_prefix: 0.0.0.0/0
+          protocol: tcp
+          port_range_min: 8774
+          port_range_max: 8774
+        - remote_ip_prefix: 0.0.0.0/0
+          protocol: tcp
+          port_range_min: 8776
+          port_range_max: 8776
+        - remote_ip_prefix: 0.0.0.0/0
+          protocol: tcp
+          port_range_min: 8777
+          port_range_max: 8777
+        - remote_ip_prefix: 0.0.0.0/0
+          protocol: tcp
+          port_range_min: 9393
+          port_range_max: 9393
+        - remote_ip_prefix: 0.0.0.0/0
+          protocol: tcp
+          port_range_min: 9292
+          port_range_max: 9292
+        - remote_ip_prefix: 0.0.0.0/0
+          protocol: tcp
+          port_range_min: 9696
+          port_range_max: 9696
+        - remote_ip_prefix: 0.0.0.0/0
+          protocol: icmp
+        - ethertype: 'IPv4'
+          remote_mode: 'remote_group_id'
+        - ethertype: 'IPv6'
+          remote_mode: 'remote_group_id'
+        - ethertype: IPv4
+          remote_ip_prefix: 192.168.0.0/22
+          protocol: igmp
+        - ethertype: 'IPv4'
+          remote_mode: 'remote_group_id'
+          protocol: tcp
+        - ethertype: 'IPv4'
+          remote_mode: 'remote_group_id'
+          protocol: udp
+        - ethertype: 'IPv4'
+          remote_mode: 'remote_group_id'
+
+outputs:
+   security_group_id:
+     description: Get resource id of this security group
+     value: { get_resource: ci_securitygroup }

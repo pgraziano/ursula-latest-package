@@ -1,0 +1,50 @@
+---
+- name: try to stop old garbd service
+  service: name="{{ garbd_service }}" state=stopped enabled=false pattern=/usr/bin/garbd
+  when: ursula_os == 'ubuntu'
+  failed_when: False
+
+- name: try to stop old garbd service
+  service: name="{{ garbd_service }}" state=stopped enabled=false
+  when: ursula_os == 'rhel'
+  failed_when: False
+
+- name: make garbd log
+  copy: dest=/var/log/garbd.log owner=nobody content='' force=no
+
+- name: galera data dir
+  file:
+    path: /var/lib/galera
+    owner: nobody
+    state: directory
+
+# the arbiter node only needs the garbd daemon
+- name: install percona garbd package
+  package: pkg=percona-xtradb-cluster-garbd-3.x state=installed
+  when: ursula_os == 'ubuntu'
+  register: result
+  until: result|succeeded
+  retries: 5
+
+- name: install percona garbd package
+  package: pkg=Percona-XtraDB-Cluster-garbd-3 state=installed
+  when: ursula_os == 'rhel'
+  register: result
+  until: result|succeeded
+  retries: 5
+
+- name: install garbd config
+  template: src=etc/default/garbd dest=/etc/default/garbd mode=0644
+  when: ursula_os == 'ubuntu'
+
+- name: install garbd config
+  template: src=etc/default/garbd dest=/etc/sysconfig/garb mode=0644
+  when: ursula_os == 'rhel'
+
+- name: ensure garbd running
+  service: name="{{ garbd_service }}" state=started enabled=yes pattern=/usr/bin/garbd
+  when: ursula_os == 'ubuntu'
+
+- name: ensure garbd running
+  service: name="{{ garbd_service }}" state=started enabled=yes
+  when: ursula_os == 'rhel'

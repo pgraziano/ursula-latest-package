@@ -1,0 +1,3 @@
+{% for host in groups['compute'] %}
+{{ hostvars[host].ansible_nodename }},{{ hostvars[host][primary_interface].ipv4.address }} ssh-rsa {{ hostvars[host].ansible_ssh_host_key_rsa_public }}
+{% endfor %}

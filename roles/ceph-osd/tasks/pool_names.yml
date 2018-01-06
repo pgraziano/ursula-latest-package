@@ -1,0 +1,196 @@
+---
+# task list in this yml should only be execute once
+# ssd_pool should be undefined before
+- name: verify ssd_pool is undefined
+  assert:
+    that:
+      - ssd_pool is undefined
+      - hybrid_pool is undefined
+
+- name: gather existing cluster pool data if any
+  shell: rados lspools
+  changed_when: false
+  register: existing_pools
+
+# if default pool doesn't exist
+- name: set pool names if default pool doesn't exist
+  set_fact:
+    ssd_pool: "rbd_ssd"
+    hybrid_pool: "rbd_hybrid"
+  when: not existing_pools.stdout | search("default")
+
+# if default pool exist and ssd/hybrid pool doesn't exist
+- name: get first osd host
+  shell: ceph osd tree |sort -rn -k1 |grep -m1  -oP "(?<=host )\S+"
+  changed_when: false
+  register: result_first_osd_host
+  when:
+    - existing_pools.stdout | search("default")
+    - not existing_pools.stdout | search("(rbd_ssd)|(rbd_hybrid)")
+
+- name: set ssd_pool=default if ssd is original backend
+  set_fact:
+    ssd_pool: "default"
+    hybrid_pool: "rbd_hybrid"
+  with_items: "{{ groups['ceph_osds_ssd'] | default([]) }}"
+  when: result_first_osd_host.stdout is defined and item | search(result_first_osd_host.stdout)
+
+- name: set hybrid_pool=default if hybrid is original backend
+  set_fact:
+    hybrid_pool: "default"
+    ssd_pool: "rbd_ssd"
+  with_items: "{{ groups['ceph_osds_hybrid'] | default([]) }}"
+  when: result_first_osd_host.stdout is defined and item | search(result_first_osd_host.stdout)
+
+# there is potential risk that host name doesn't match, do a check here
+- name: pool name should have been defined here if only default pool exists
+  assert:
+    that:
+      - ssd_pool is defined
+      - hybrid_pool is defined
+  when: result_first_osd_host.skipped is undefined
+
+# if default pool exists, ssd/hybrid pool exists too
+- name: set pool names if default pool and ssd pool exist
+  set_fact:
+    ssd_pool: "rbd_ssd"
+    hybrid_pool: "default"
+  when:
+    - existing_pools.stdout | search("default")
+    - existing_pools.stdout | search("rbd_ssd")
+
+- name: set pool names if default pool and hybrid pool exist
+  set_fact:
+    hybrid_pool: "rbd_hybrid"
+    ssd_pool: "default"
+  when:
+    - existing_pools.stdout | search("default")
+    - existing_pools.stdout | search("rbd_hybrid")
+
+# we may not create both ssd_pool and hybrid
+# but we have to make sure both pool names are defined
+- name: make sure both ssd_pool and hybrid_pool is defined
+  assert:
+    that:
+      - ssd_pool is defined
+      - hybrid_pool is defined
+
+- name: populate pool names to all osd nodes
+  set_fact:
+    hybrid_pool: "{{ hybrid_pool }}"
+    ssd_pool: "{{ ssd_pool }}"
+  delegate_to: "{{ item }}"
+  delegate_facts: yes
+  with_items: "{{ groups['ceph_osds'] }}"
+
+# configure ruleset names
+- name: initial ruleset names
+  set_fact:
+    ssd_ruleset: "ssd_ruleset"
+    hybrid_ruleset: "hybrid_ruleset"
+
+- name: set ssd_ruleset name if ssd_pool is default
+  set_fact:
+    ssd_ruleset: "replicated_ruleset"
+  when: ssd_pool == "default"
+
+- name: set hybrid_ruleset name if hybrid_pool is default
+  set_fact:
+    hybrid_ruleset: "replicated_ruleset"
+  when: hybrid_pool == "default"
+
+- name: populate ruleset to all osd nodes
+  set_fact:
+    ssd_ruleset: "{{ ssd_ruleset }}"
+    hybrid_ruleset: "{{ hybrid_ruleset }}"
+  delegate_to: "{{ item }}"
+  delegate_facts: yes
+  with_items: "{{ groups['ceph_osds'] }}"
+
+- name: set dict of ceph pool
+  set_fact:
+    ceph_pools:
+      rbd_ssd:
+        pool_name: "{{ ssd_pool }}"
+        enabled: "{{ groups['ceph_osds_ssd'] |default([]) |length > 0 }}"
+        volume_type: "CEPH_SSD"
+      rbd_hybrid:
+        pool_name: "{{ hybrid_pool }}"
+        enabled: "{{ groups['ceph_osds_hybrid'] |default([]) |length > 0 }}"
+        volume_type: "CEPH_HYBRID"
+  delegate_to: "{{ item }}"
+  delegate_facts: yes
+  with_items:
+    - "{{ groups['controller'] }}"
+    - "{{ groups['cinder_volume'] }}"
+    - "{{ groups['compute'] }}"
+    - "{{ inventory_hostname }}"
+
+# set default backend, pool
+- name: get first host if two pools exist
+  shell: ceph osd tree |sort -rn -k1 |grep -m1  -oP "(?<=host )\S+"
+  failed_when: false
+  changed_when: false
+  register: result_running_first_osd
+  when: ceph_pools.rbd_ssd.enabled and ceph_pools.rbd_hybrid.enabled
+
+- name: hybrid is default backend for new deployed multi backends env
+  set_fact:
+    ceph_default_backend: "rbd_hybrid"
+    ceph_default_pool: "{{ ceph_pools.rbd_hybrid.pool_name }}"
+  when: result_running_first_osd.rc is defined and result_running_first_osd.rc != 0
+
+- name: ssd is the original backend
+  set_fact:
+    ceph_default_backend: "rbd_ssd"
+    ceph_default_pool: "{{ ceph_pools.rbd_ssd.pool_name }}"
+  with_items: "{{ groups['ceph_osds_ssd'] | default([]) }}"
+  when: result_running_first_osd.rc is defined and result_running_first_osd.rc == 0 and
+        item | search(result_running_first_osd.stdout)
+
+- name: hybrid is the original backend
+  set_fact:
+    ceph_default_backend: "rbd_hybrid"
+    ceph_default_pool: "{{ ceph_pools.rbd_hybrid.pool_name }}"
+  with_items: "{{ groups['ceph_osds_hybrid'] | default([]) }}"
+  when: result_running_first_osd.rc is defined and result_running_first_osd.rc == 0 and
+        item | search(result_running_first_osd.stdout)
+
+# make a check here in case hostname search fail for unknow error
+- name: ceph_default_backend should be defined here if two backends exist
+  assert:
+    that:
+      - ceph_default_backend is defined
+      - ceph_default_pool is defined
+  when: ceph_pools.rbd_ssd.enabled and ceph_pools.rbd_hybrid.enabled
+
+# if two pools exist, ceph_default_pool shoule has been defined
+# so we say only one pool exists if ceph_default_pool is undefined
+- name: only one pool exists
+  set_fact:
+    ceph_default_backend: "{{ item.key }}"
+    ceph_default_pool: "{{ item.value.pool_name }}"
+  when: item.value.enabled and ceph_default_pool is undefined
+  with_dict: "{{ ceph_pools|default({}) }}"
+
+- name: populate default pool, backend to related nodes
+  set_fact:
+    ceph_default_backend: "{{ ceph_default_backend }}"
+    ceph_default_pool: "{{ ceph_default_pool }}"
+  delegate_to: "{{ item }}"
+  delegate_facts: yes
+  with_items:
+    - "{{ groups['controller'] }}"
+    - "{{ groups['cinder_volume'] }}"
+
+# this flag has to be defined at the end of this yml file
+# because main.yml passes condition 'pool_names_completed is defined' to
+# every task in this yml file
+- name: set pool_names_completed to indicate pool_names.yml has been run
+  set_fact:
+    pool_names_completed: true
+  delegate_to: "{{ item }}"
+  delegate_facts: yes
+  with_items:
+    - "{{ groups['ceph_osds'] }}"
+    - "{{ groups['ceph_monitors'] }}"

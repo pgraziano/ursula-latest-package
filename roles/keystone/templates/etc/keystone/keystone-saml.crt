@@ -1,0 +1,1 @@
+{{ keystone.federation.idp.k2k.saml_signing_cert }}

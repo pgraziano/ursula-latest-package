@@ -1,0 +1,2 @@
+- include: osp.yml
+  when: openstack_distro_type == 'osp'

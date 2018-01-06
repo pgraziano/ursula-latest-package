@@ -1,0 +1,708 @@
+---
+stack_env: example
+ursula_env_path: "{{ lookup('env','URSULA_ENV') }}"
+country_code: US
+openstack_install_method: 'source'
+openstack_distro_type: ~
+
+
+basevenv: "/opt/openstack/base"
+basevenv_lib_dir: "{{ basevenv }}/lib/python2.7/site-packages"
+
+hostname_fqdn: "{{ ansible_fqdn }}"
+hostname_short: "{{ hostname_fqdn.split('.')|first }}"
+
+primary_interface: 'ansible_eth0'
+primary_ip: "{{ hostvars[inventory_hostname][primary_interface]['ipv4']['address'] }}"
+
+secrets:
+  db_password:      asdf
+  mongodb_password: asdf
+  service_password: asdfA#8!
+  rabbit_password:  asdf
+  admin_password:   asdfA#8!
+  stack_domain_admin_password: ydgurtH5erghithge57!
+  metadata_proxy_shared_secret: asdf
+  horizon_secret_key:           asdf
+  glance_sync:      ADQ64XUQLUWH75M634RVBLP55RKPGGOWG
+  monitor_password: asdfA#8!
+  telemetry_secret: asdf
+  cloud_admin_password: asdfA#8!
+
+fqdn: openstack.example.com
+swift_fqdn: "{{ fqdn }}"
+floating_ip: "{{ hostvars[groups['controller'][0]][primary_interface]['ipv4']['address'] }}"
+undercloud_floating_ip: "{{ hostvars[groups['controller'][0]][primary_interface]['ipv4']['address'] }}"
+
+etc_hosts:
+  - name: "{{ fqdn }}"
+    ip: "{{ floating_ip }}"
+
+state_path_base: /var/lib
+
+rabbitmq:
+  port: 5672
+  user: openstack
+  cluster: false
+
+mongodb:
+  port: 27017
+  keyfile_content: |
+    fO3Ngno3oF5BDdbcc1Dm7ENPOhtlnoKnPBBjoRbGJxO9jsMmNXpqZVisyyCMyNAf
+    YA7X24V4PD+xL/es3Qf8xS7oe503aFaF1XW+L88UfZxzPiDH31LE1Hlek6jRMKqV
+    jwfxc+lg4wvDxo+nvxXpMJW/HtcdlIFj6yaRY0L/n57M4DrXx9zUt2oxDotoDQcJ
+    Ua0PWh/hGUlMQd4hvt7/W1mUrBWJ4HfeweI5iZnMvnhRBnTwx2MQr2dXsbtMtQ0x
+    ImSbcZi9zY1374UGaoRWlLYegS3+6geEzhZb6RX3qhEMCID5+omuh9jP0Uxodhs6
+    Cpi+gN2QVbKdEc1HfeGFWNqBi7B4yN/zztoNGzJvcl2wcWoNp5Iu9MNYVNNy+PnU
+    ozEQ7tdOobgjaUiOl4NdT9ww8ysyIrzPoo3ZxDn+RF6zj/mhVx9EpITiqwSIC+gQ
+    2iq8gVRTbqiIceNmwuoMzcR7o1LbZZjuuoGfE4lPzoiJujJ4RbX5hAqFH+5DFTWr
+    Xts5AaZOiWxgGZaaU/6XWasoh75fqSIW2g+ViBN1Y28+6DoORo6rdaUgY0cfo+wg
+    vRBpVeLGygKpOwc9nq7N3kQvjpAmHJCKdivoDSIUiJKCibUl9qmJwUFvmM/xO8cm
+    z58LLXBhtDsGlT/3WN2n0+NbkD3vef7eriEF8rL/MI1q+inIIoxvlmreDZin2EAh
+    ha32zdZ+jRtEFjMkeJJfpt+jGmCLZxWjyxQFudyv9bg8aISpjwWT4bt7wFQiNFJH
+    Q+oUygwbAxqF0Y1n0XYmRZqUo9RveFntFbik8DpUXmZJABfJCB7HMOkrZN4QE/Ap
+    J0vmxpVJkRCypB1Q9Qvg3Ans3+mdgpwD/HXPyE/MYbM/MGFEIJFzC4Ic88UVB/nW
+    GegLWSgMErRQnaoYcaCyKhyXWvmz1VPymCIwdxDUCLN/GMXyVUw5N8zGEX7Dlyak
+    /LiiRGYq/GLcMPPx2+1mQPPDNMpR
+
+memcached:
+  memory: 64
+  port: 11211
+  user: nobody
+  max_connections: 1024
+
+swift:
+  enabled: False
+  allow_versions: True
+  swifttool_method: pip
+  swifttool_version: 0.0.2.dev29
+  swifttool_pypi_mirror: https://pypi-mirror.openstack.blueboxgrid.com/bluebox/openstack
+  logging:
+    debug: False
+
+endpoints:
+  main:     "{{ fqdn }}"
+  db:       "{{ undercloud_floating_ip }}"
+  rabbit:   "{{ undercloud_floating_ip }}"
+  identity_uri: https://{{ fqdn }}:35357
+  auth_uri: https://{{ fqdn }}:5000/v2.0
+
+mysql:
+  root_password: asdf
+xtradb:
+  galera_version: 3.x
+  client_version: 5.6
+  server_version: 5.6
+  sst_auth_user: sst_admin
+  sst_auth_password: asdf
+
+monitoring:
+  enabled: true
+  keepalive:
+    handler: default
+  scan_for_log_errors: true
+  openstack:
+    user:
+      username: monitor
+      password: "{{ secrets.monitor_password }}"
+      tenant: admin
+      role: admin
+
+openstack:
+  pypi_mirror: https://pypi-mirror.openstack.blueboxgrid.com/root/pypi
+  easy_install_mirror: https://pypi-mirror.openstack.blueboxgrid.com/root/pypi/+simple
+  pip_trusted: pypi-mirror.openstack.blueboxgrid.com
+  gem_sources:
+    - https://rubygems.org
+  git_mirror:  https://github.com/openstack
+  git_update: yes
+  ubuntu_mirror: https://apt-mirror.openstack.blueboxgrid.com/trusty/ubuntu
+
+apt_repos:
+  docker:
+    repo: https://apt-mirror.openstack.blueboxgrid.com/docker/ubuntu
+    key_url: https://apt-mirror.openstack.blueboxgrid.com/keys/docker.key
+  blueboxcloud_giftwrap:
+    repo: https://apt-mirror.openstack.blueboxgrid.com/blueboxcloud_giftwrap/blueboxcloud/giftwrap/ubuntu
+    key_url: https://apt-mirror.openstack.blueboxgrid.com/keys/blueboxcloud_giftwrap.key
+  hwraid:
+    repo: https://apt-mirror.openstack.blueboxgrid.com/hwraid/ubuntu
+    key_url: https://apt-mirror.openstack.blueboxgrid.com/keys/hwraid.key
+  sensu:
+    repo: https://apt-mirror.openstack.blueboxgrid.com/sensu/apt
+    key_url: https://apt-mirror.openstack.blueboxgrid.com/keys/sensu.key
+  haproxy:
+    repo: https://apt-mirror.openstack.blueboxgrid.com/haproxy/vbernat/haproxy-1.5/ubuntu
+    key_url: https://apt-mirror.openstack.blueboxgrid.com/keys/haproxy.key
+  bbg_openstack_ppa:
+    repo: https://apt-mirror.openstack.blueboxgrid.com/bbg_openstack_ppa/blueboxgroup/openstack/ubuntu
+    key_url: https://apt-mirror.openstack.blueboxgrid.com/keys/bbg_openstack_ppa.key
+  percona:
+    repo: https://apt-mirror.openstack.blueboxgrid.com/percona/apt
+    key_url: https://apt-mirror.openstack.blueboxgrid.com/keys/percona.key
+  rabbitmq:
+    repo: https://apt-mirror.openstack.blueboxgrid.com/rabbitmq/debian
+    key_url: https://apt-mirror.openstack.blueboxgrid.com/keys/rabbitmq.key
+  cloud_archive:
+    repo: https://apt-mirror.openstack.blueboxgrid.com/cloud_archive/ubuntu
+  erlang:
+    repo: https://apt-mirror.openstack.blueboxgrid.com/erlang/debian
+    key_url: https://apt-mirror.openstack.blueboxgrid.com/keys/erlang.key
+  ceph:
+    repo: https://apt-mirror.openstack.blueboxgrid.com/packagecloud.io/blueboxcloud/ceph-bbg/ubuntu
+    key_url: https://apt-mirror.openstack.blueboxgrid.com/keys/ceph_bbg.key
+  collectd:
+    repo: http://ppa.launchpad.net/raravena80/collectd5/ubuntu
+    key_url: "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0xE97C3D97792BD34E"
+  mongodb:
+    repo: https://apt-mirror.openstack.blueboxgrid.com/mongodb/apt/ubuntu
+    key_url: https://apt-mirror.openstack.blueboxgrid.com/keys/mongodb.key
+  elastic:
+    repo: https://apt-mirror.openstack.blueboxgrid.com/elastic_5_x
+    key_url: https://apt-mirror.openstack.blueboxgrid.com/keys/elastic_5_x.key
+  chef:
+    repo: https://apt-mirror.openstack.blueboxgrid.com/chef
+    key_url: https://apt-mirror.openstack.blueboxgrid.com/keys/chef.key
+
+client:
+  self_signed_cert: true
+
+nova:
+  libvirt_type: qemu
+  api_workers: 1
+  conductor_workers: 1
+  metadata_api_workers: 1
+  reserved_host_disk_mb: 50
+  enable_ssh: true
+  preallocate_images: none
+  logging:
+    debug: True
+    verbose: True
+  novnc_method: file
+  novnc_url: https://file-mirror.openstack.blueboxgrid.com/novnc/novnc-0.5.1.tar.gz
+
+barbican:
+  enabled: False
+
+ceph:
+  enabled: false
+  #disks:
+  #  - sdb
+  #  - sdc
+  #  - sdd
+  #bcache_ssd_device: sdg
+
+lvm:
+  enabled: false
+
+v7k:
+  enabled: false
+
+cinder:
+  enabled: True
+  encryption:
+    enabled: False
+    fixed_key: ~
+    #fixed_key: 6a5c55db5e250f234b6af7807dafda77433dddcf372b6d04801a45f578a35aa7
+  enabled_backends: [] # rbd_volumes for Ceph
+  backends: []
+    # Ceph
+    #- name: rbd_volumes
+    #  volume_driver: cinder.volume.drivers.rbd.RBDDriver
+  volume_type: file
+  volume_file: /opt/stack/cinder-volumes
+  volume_file_size: 5G
+  create_vg: True
+  logging:
+    debug: True
+    verbose: True
+  volume_types: []
+  encrypted_volume_types:
+    - volume_type: encrypted-aes-512
+      cipher: aes-xts-plain64
+      key_size: 512
+      provider: nova.volume.encryptors.luks.LuksEncryptor
+      control_location: front-end
+
+neutron:
+  advertise_mtu: true
+  path_mtu: 1400
+  global_physnet_mtu: 1500
+  plugin: ml2
+  bridge_mappings: ''
+  network_vlan_ranges: ''
+  tenant_network_type: vxlan
+  arp_responder: false
+  l2_population: false
+  tunnel_types:
+    - vxlan
+  lbaas:
+    enabled: False
+  logging:
+    debug: True
+    verbose: True
+  networks:
+    - name: internal
+      shared: true
+      external: false
+      network_type: vxlan
+      segmentation_id: 256
+      provider_physical_network: ~
+    - name: external
+      shared: false
+      external: true
+      network_type: local
+      segmentation_id: ~
+      provider_physical_network: ~
+  subnets:
+    - name: internal_v4
+      network_name: internal
+      ip_version: 4
+      cidr: 172.16.255.0/24
+      pool_start: 172.16.255.2
+      pool_end: 172.16.255.254
+      enable_dhcp: "true"
+      gateway_ip: 172.16.255.1
+      dns_nameservers: '8.8.8.8,8.8.4.4'
+    - name: internal_v6
+      network_name: internal
+      ip_version: 6
+      cidr: 2db8:1::/64
+      enable_dhcp: "true"
+      gateway_ip: 2db8:1::1
+      ipv6_address_mode: dhcpv6-stateless
+      ipv6_ra_mode: dhcpv6-stateless
+      dns_nameservers: '2001:4860:4860::8888,2001:4860:4860::8844'
+    - name: external
+      network_name: external
+      ip_version: 4
+      cidr: 192.168.255.0/24
+      enable_dhcp: "false"
+      gateway_ip: 192.168.255.1
+      dns_nameservers: '8.8.8.8,8.8.4.4'
+  routers:
+    - name: default
+      tenant_name: admin
+  router_interfaces:
+    - router_name: default
+      subnet_name: internal_v4
+      tenant_name: admin
+    - router_name: default
+      subnet_name: internal_v6
+      tenant_name: admin
+  tenant_nameservers:
+    - 8.8.4.4
+    - 8.8.8.8
+
+glance:
+  api_workers: 1
+  registry_workers: 1
+  logging:
+    debug: True
+    verbose: True
+  images:
+    - name: cirros
+      url: https://file-mirror.openstack.blueboxgrid.com/cloud-images/cirros-0.3.3-x86_64-disk.img
+      filename: cirros-0.3.3-x86_64-disk.img
+
+keystone:
+  token_expiration_in_seconds: 86400
+  logging:
+    debug: True
+    verbose: True
+  tenants:
+    - admin
+    - service
+    - demo
+  users:
+    - name: admin
+      password: "{{ secrets.admin_password }}"
+      tenant: admin
+    - name: demo
+      password: demopass$S5
+      tenant: demo
+    - name: nova
+      password: "{{ secrets.service_password }}"
+      tenant: service
+    - name: glance
+      password: "{{ secrets.service_password }}"
+      tenant: service
+    - name: neutron
+      password: "{{ secrets.service_password }}"
+      tenant: service
+    - name: cinder
+      password: "{{ secrets.service_password }}"
+      tenant: service
+    - name: heat
+      password: "{{ secrets.service_password }}"
+      tenant: service
+    - name: ceilometer
+      password: "{{ secrets.service_password }}"
+      tenant: service
+    - name: ironic
+      password: "{{ secrets.service_password }}"
+      tenant: service
+    - name: magnum
+      password: "{{ secrets.service_password }}"
+      tenant: service
+    - name: "{{ monitoring.openstack.user.username }}"
+      password: "{{ monitoring.openstack.user.password }}"
+      tenant: "{{ monitoring.openstack.user.tenant }}"
+    - name: swift
+      password: "{{ secrets.service_password }}"
+      tenant: service
+    - name: cloud_admin
+      password: "{{ secrets.cloud_admin_password }}"
+      tenant: demo
+    - name: aodh
+      password: "{{ secrets.service_password }}"
+      tenant: service
+    - name: barbican
+      password: "{{ secrets.service_password }}"
+      tenant: service
+    - name: placement
+      password: "{{ secrets.service_password }}"
+      tenant: service
+  user_roles:
+    - user: admin
+      tenant: admin
+      role: admin
+    - user: admin
+      tenant: admin
+      role: heat_stack_owner
+    - user: admin
+      tenant: service
+      role: admin
+    - user: nova
+      tenant: service
+      role: service
+    - user: glance
+      tenant: service
+      role: service
+    - user: neutron
+      tenant: service
+      role: service
+    - user: neutron
+      tenant: service
+      role: admin
+    - user: cinder
+      tenant: service
+      role: service
+    - user: heat
+      tenant: service
+      role: service
+    - user: ceilometer
+      tenant: service
+      role: service
+    - user: ceilometer
+      tenant: service
+      role: admin
+    - user: magnum
+      tenant: service
+      role: service
+    - user: ironic
+      tenant: service
+      role: service
+    - user: "{{ monitoring.openstack.user.username }}"
+      tenant: "{{ monitoring.openstack.user.tenant }}"
+      role: "{{ monitoring.openstack.user.role }}"
+    - user: swift
+      tenant: service
+      role: admin
+    - user: cloud_admin
+      tenant: demo
+      role: cloud_admin
+    - user: cloud_admin
+      tenant: demo
+      role: heat_stack_owner
+    - user: aodh
+      tenant: service
+      role: admin
+    - user: barbican
+      tenant: service
+      role: admin
+    - user: placement
+      role: admin
+      tenant: service
+  services:
+    - name: keystone
+      type: identity
+      description: 'Identity Service'
+      public_url: "{{ endpoints.keystone.url.public }}/{{ endpoints.keystone.version }}"
+      internal_url: "{{ endpoints.keystone.url.internal }}/{{ endpoints.keystone.version }}"
+      admin_url: "{{ endpoints.keystone.url.admin }}/{{ endpoints.keystone.version }}"
+    - name: keystonev3
+      type: identityv3
+      description: 'Identity Service v3'
+      public_url: "{{ endpoints.keystone.url.public }}/{{ endpoints.keystonev3.version }}"
+      internal_url: "{{ endpoints.keystone.url.internal }}/{{ endpoints.keystonev3.version }}"
+      admin_url: "{{ endpoints.keystone.url.admin }}/{{ endpoints.keystonev3.version }}"
+    - name: nova
+      type: compute
+      description: 'Compute Service'
+      public_url: "{{ endpoints.nova.url.public }}/{{ endpoints.nova.url.path }}"
+      internal_url: "{{ endpoints.nova.url.internal }}/{{ endpoints.nova.url.path }}"
+      admin_url: "{{ endpoints.nova.url.admin }}/{{ endpoints.nova.url.path }}"
+    - name: placement
+      type: placement
+      description: 'Placement Service'
+      public_url: "{{ endpoints.placement.url.public }}"
+      internal_url: "{{ endpoints.placement.url.internal }}"
+      admin_url: "{{ endpoints.placement.url.admin }}"
+    - name: glance
+      type: image
+      description: 'Image Service'
+      public_url: "{{ endpoints.glance.url.public }}"
+      internal_url: "{{ endpoints.glance.url.internal }}"
+      admin_url: "{{ endpoints.glance.url.admin }}"
+    - name: neutron
+      type: network
+      description: 'Network Service'
+      public_url: "{{ endpoints.neutron.url.public }}"
+      internal_url: "{{ endpoints.neutron.url.internal }}"
+      admin_url: "{{ endpoints.neutron.url.admin }}"
+    - name: cinder
+      type: volume
+      description: 'Volume Service'
+      public_url: "{{ endpoints.cinder.url.public }}/{{ endpoints.cinder.url.path }}"
+      internal_url: "{{ endpoints.cinder.url.internal }}/{{ endpoints.cinder.url.path }}"
+      admin_url: "{{ endpoints.cinder.url.admin }}/{{ endpoints.cinder.url.path }}"
+    - name: cinderv2
+      type: volumev2
+      description: 'Volume Service v2'
+      public_url: "{{ endpoints.cinderv2.url.public }}/{{ endpoints.cinderv2.url.path }}"
+      internal_url: "{{ endpoints.cinderv2.url.internal }}/{{ endpoints.cinderv2.url.path }}"
+      admin_url: "{{ endpoints.cinderv2.url.admin }}/{{ endpoints.cinderv2.url.path }}"
+    - name: cinderv3
+      type: volumev3
+      description: 'Volume Service v3'
+      public_url: "{{ endpoints.cinderv3.url.public }}/{{ endpoints.cinderv3.url.path }}"
+      internal_url: "{{ endpoints.cinderv3.url.internal }}/{{ endpoints.cinderv3.url.path }}"
+      admin_url: "{{ endpoints.cinderv3.url.admin }}/{{ endpoints.cinderv3.url.path }}"
+    - name: heat
+      type: orchestration
+      description: 'Heat Orchestration API'
+      public_url: "{{ endpoints.heat.url.public }}/{{ endpoints.heat.url.path }}"
+      internal_url: "{{ endpoints.heat.url.internal }}/{{ endpoints.heat.url.path }}"
+      admin_url: "{{ endpoints.heat.url.admin }}/{{ endpoints.heat.url.path }}"
+    - name: heat-cfn
+      type: cloudformation
+      description: 'Heat CloudFormation API'
+      public_url: "{{ endpoints.heat_cfn.url.public }}/{{ endpoints.heat_cfn.version }}"
+      internal_url: "{{ endpoints.heat_cfn.url.internal }}/{{ endpoints.heat_cfn.version }}"
+      admin_url: "{{ endpoints.heat_cfn.url.admin }}/{{ endpoints.heat_cfn.version }}"
+    - name: ceilometer
+      type: metering
+      description: 'Telemetry Service'
+      public_url: "{{ endpoints.ceilometer.url.public }}"
+      internal_url: "{{ endpoints.ceilometer.url.internal }}"
+      admin_url: "{{ endpoints.ceilometer.url.admin }}"
+    - name: ironic
+      type: baremetal
+      description: 'Ironic bare metal provisioning service'
+      public_url: "{{ endpoints.ironic.url.public }}"
+      internal_url: "{{ endpoints.ironic.url.internal }}"
+      admin_url: "{{ endpoints.ironic.url.admin }}"
+    - name: swift
+      type: object-store
+      description: 'Object Storage Service'
+      public_url: "{{ endpoints.swift.url.public }}/{{ endpoints.swift.url.path }}"
+      internal_url: "{{ endpoints.swift.url.internal }}/{{ endpoints.swift.url.path }}"
+      admin_url: "{{ endpoints.swift.url.admin }}/{{ endpoints.swift.url.path }}"
+    - name: magnum
+      type: container
+      description: 'Magnum Container Service'
+      public_url: "{{ endpoints.magnum.url.public }}"
+      internal_url: "{{ endpoints.magnum.url.internal }}"
+      admin_url: "{{ endpoints.magnum.url.admin }}"
+    - name: aodh
+      type: alarming
+      description: 'aodh alarming service'
+      public_url: "{{ endpoints.aodh.url.public }}"
+      internal_url: "{{ endpoints.aodh.url.internal }}"
+      admin_url: "{{ endpoints.aodh.url.admin }}"
+    - name: barbican
+      type: key-manager
+      description: 'Key Management Service'
+      public_url: "{{ endpoints.barbican.url.public }}"
+      internal_url: "{{ endpoints.barbican.url.internal }}"
+      admin_url: "{{ endpoints.barbican.url.admin }}"
+  federation:
+    enabled: False
+
+ssl:
+  cafile: "{{ (ursula_os == 'rhel' ) | ternary('/etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt', '/etc/ssl/certs/ca-certificates.crt') }}"
+  crt: |
+    -----BEGIN CERTIFICATE-----
+    MIIDmzCCAoOgAwIBAgIJAPiU05VLEq08MA0GCSqGSIb3DQEBBQUAMGwxCzAJBgNV
+    BAYTAlVTMQ4wDAYDVQQIEwVURVhBUzEPMA0GA1UEBxMGQVVTVElOMQwwCgYDVQQK
+    EwNJQk0xDjAMBgNVBAsTBUNMT1VEMR4wHAYDVQQDExVvcGVuc3RhY2suZXhhbXBs
+    ZS5jb20wHhcNMTcwMjEzMTQyMjQ0WhcNMjcwMjExMTQyMjQ0WjBsMQswCQYDVQQG
+    EwJVUzEOMAwGA1UECBMFVEVYQVMxDzANBgNVBAcTBkFVU1RJTjEMMAoGA1UEChMD
+    SUJNMQ4wDAYDVQQLEwVDTE9VRDEeMBwGA1UEAxMVb3BlbnN0YWNrLmV4YW1wbGUu
+    Y29tMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAryb+bo0Hz4iN6qZ6
+    //w4DksuicHgfkgI2FsRFRae1t6BgSS/rHB9Z+CHdixrACF3ULN5SERqJ6J94GHA
+    3zpwfNqKpGsAXp+sJW8bB86Pwv9/jzthKwkMz6H2vY+PJXQ9NYanuoLTovE1/V0L
+    GCPw/u3FFV0GSv2gTnlFqSAxjSyh7GcPOJOC9dyfU3AKmoP7D0vApzlt3fsUafb+
+    rrIzwpvoEikc4R/gAEuY/ax1QDyqT3GLrwGvlPh6U29Zy6sbkJWZT4nxLb1hoj4q
+    K6YTkoN7fe9lPFOKeKY5xzwLJb4D8CF4YzG8hoeV17fQzahJVeSApxh4hwIDfsRS
+    3qUT1wIDAQABo0AwPjA8BgNVHREENTAzgg0qLmV4YW1wbGUuY29tghVvcGVuc3Rh
+    Y2suZXhhbXBsZS5jb22CC2V4YW1wbGUuY29tMA0GCSqGSIb3DQEBBQUAA4IBAQAu
+    za3v1hyFPYXeYIuOK/RSJm7jokqifpfTwKyHUAo0LVfohLgLLeHJnjvXkKWmGzca
+    FQUGg9SdsNWOtl+EUyxQr7xT46LsvQZZNRN3hJIlOQCyi/Brwg3vvqW3ulHF+Y1Z
+    tDZ+G3sYq2S2HrLjCMiLS/sEl+QQVKFH5KK/Uh0pX1gNjPs+lWj9qKJNpxw9NQPa
+    0R24jf92pc+KnUHWLP5+NzP8qulXcGrt9doORjrqzuif6NQR4I4K4r7m+9e79u9F
+    q3j0VsIiUxl0axcP2dBwfpP8IvCzt5Uh3zQu6lMc9qFJRcJW8+yP7MNP9UP0wiZj
+    +ga8USb7nntnpJbWgw8R
+    -----END CERTIFICATE-----
+  key: |
+    -----BEGIN RSA PRIVATE KEY-----
+    MIIEogIBAAKCAQEAryb+bo0Hz4iN6qZ6//w4DksuicHgfkgI2FsRFRae1t6BgSS/
+    rHB9Z+CHdixrACF3ULN5SERqJ6J94GHA3zpwfNqKpGsAXp+sJW8bB86Pwv9/jzth
+    KwkMz6H2vY+PJXQ9NYanuoLTovE1/V0LGCPw/u3FFV0GSv2gTnlFqSAxjSyh7GcP
+    OJOC9dyfU3AKmoP7D0vApzlt3fsUafb+rrIzwpvoEikc4R/gAEuY/ax1QDyqT3GL
+    rwGvlPh6U29Zy6sbkJWZT4nxLb1hoj4qK6YTkoN7fe9lPFOKeKY5xzwLJb4D8CF4
+    YzG8hoeV17fQzahJVeSApxh4hwIDfsRS3qUT1wIDAQABAoIBADFtMZOE3NVl1ZaI
+    EGG4jSELekCJo44/Sa+0Uye+UGiWNbl541UIEXuE0vU4J6HLz93IJ8uK8uHoatks
+    /L6BwUiaa1FmmJ4bNPsDVX9ofQ0sCJUkzpDUZvcY34YywtRw7uzx6NcrIAn1Q6UR
+    4pWXXuSxuFIFBEeZNumuM0g8u374x5HIW7cuyQmqDZyAtzcm0RNV3tizHeglbEu2
+    rrWxk+DEIM2nzNvDNBAiX4oIx//03u4t+6BEQb5sdombVX4Jy2idhZ1KllNESJBC
+    dNPj7z5h+r7/XjtxTAeOcp4vwVgV0Mo7qSfvF4tzx7l/wJWdx5FjfhsZNnvSGcSB
+    PSO6rOECgYEA4z1uNPjjXIII7hdgBtLBAvpayib8j8KE/8srlv6FmMQHSgtu7dK1
+    RaAm4CaW0sAeTPdIfzimwRKibVOtyL9Xg7tWTTb89Z0pimZJ3B0s8O7W36Ov9A2Y
+    nNQ5gpcH6EwJs30A5/TnH/fhdPikh1GUoFX9nKNBvLlYzMQHAj6ubPkCgYEAxVHs
+    yfn/tn1Owrk/f3MS5DrUFdUCOR3vOPRasefRALsV09kmZWExU23QSdGuezSqduH9
+    VllmD44gfs9INaRhaldoWbSbN8fpI7gpRz3GlM51MjjYPpBTOpgD7T9ludEpUz7E
+    77odxQZPtVOUYSLYGBT7oiw2Y86mSPAEvwuoy08CgYARhwh8H4Jx/TmxG651eEYY
+    87STCSTL9eYKUOKA2Ar3+I7TYERjJbCDuVGmUnOpt9Xee+hkn7sFA2nx4tVxuYiH
+    iaijdg1W6JNusGscBkgUIWgDgf2tZmsSFbCF6R5cBZlt9cNfIN2+8oC6Y/9UzK8Z
+    Gujf7xu/8c/uo2QjATC1CQKBgF+zrm7/y+CMwih7hKqh+2WqirbUCzH8rMwo59wl
+    nR8HnjyTs6W0ECJwvncvNbsX/h2O2jqJPZEJ1ATtMA6kXYMgRcJMcIQLd64VYh/l
+    fG0r/XeQToF5qoReunjVKNeI9MwlQ4sp78phl0NQ+ERsi/aSJsGvQ+oAjnINx5+J
+    XiLNAoGAA8LqF2Hl+XcPmjm3I4ubTgogp/xmmC6WOOQK6o+zUL/QXdiUJx2dkmoU
+    knM2E8rF3o8xZYks55ggCYsM1u2tIXZJHRwHMZVYK5b0o54vxrqZnmL0jWMx0wsE
+    LtUUOFdx91v4nfPb7kx31/+QnXMiCQPBrp8X2/g9Q8gjsVCSlrI=
+    -----END RSA PRIVATE KEY-----
+  cacrt: |
+    -----BEGIN CERTIFICATE-----
+    MIIDmzCCAoOgAwIBAgIJAPiU05VLEq08MA0GCSqGSIb3DQEBBQUAMGwxCzAJBgNV
+    BAYTAlVTMQ4wDAYDVQQIEwVURVhBUzEPMA0GA1UEBxMGQVVTVElOMQwwCgYDVQQK
+    EwNJQk0xDjAMBgNVBAsTBUNMT1VEMR4wHAYDVQQDExVvcGVuc3RhY2suZXhhbXBs
+    ZS5jb20wHhcNMTcwMjEzMTQyMjQ0WhcNMjcwMjExMTQyMjQ0WjBsMQswCQYDVQQG
+    EwJVUzEOMAwGA1UECBMFVEVYQVMxDzANBgNVBAcTBkFVU1RJTjEMMAoGA1UEChMD
+    SUJNMQ4wDAYDVQQLEwVDTE9VRDEeMBwGA1UEAxMVb3BlbnN0YWNrLmV4YW1wbGUu
+    Y29tMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAryb+bo0Hz4iN6qZ6
+    //w4DksuicHgfkgI2FsRFRae1t6BgSS/rHB9Z+CHdixrACF3ULN5SERqJ6J94GHA
+    3zpwfNqKpGsAXp+sJW8bB86Pwv9/jzthKwkMz6H2vY+PJXQ9NYanuoLTovE1/V0L
+    GCPw/u3FFV0GSv2gTnlFqSAxjSyh7GcPOJOC9dyfU3AKmoP7D0vApzlt3fsUafb+
+    rrIzwpvoEikc4R/gAEuY/ax1QDyqT3GLrwGvlPh6U29Zy6sbkJWZT4nxLb1hoj4q
+    K6YTkoN7fe9lPFOKeKY5xzwLJb4D8CF4YzG8hoeV17fQzahJVeSApxh4hwIDfsRS
+    3qUT1wIDAQABo0AwPjA8BgNVHREENTAzgg0qLmV4YW1wbGUuY29tghVvcGVuc3Rh
+    Y2suZXhhbXBsZS5jb22CC2V4YW1wbGUuY29tMA0GCSqGSIb3DQEBBQUAA4IBAQAu
+    za3v1hyFPYXeYIuOK/RSJm7jokqifpfTwKyHUAo0LVfohLgLLeHJnjvXkKWmGzca
+    FQUGg9SdsNWOtl+EUyxQr7xT46LsvQZZNRN3hJIlOQCyi/Brwg3vvqW3ulHF+Y1Z
+    tDZ+G3sYq2S2HrLjCMiLS/sEl+QQVKFH5KK/Uh0pX1gNjPs+lWj9qKJNpxw9NQPa
+    0R24jf92pc+KnUHWLP5+NzP8qulXcGrt9doORjrqzuif6NQR4I4K4r7m+9e79u9F
+    q3j0VsIiUxl0axcP2dBwfpP8IvCzt5Uh3zQu6lMc9qFJRcJW8+yP7MNP9UP0wiZj
+    +ga8USb7nntnpJbWgw8R
+    -----END CERTIFICATE-----
+
+openstack_setup:
+  add_users: True
+  add_images: True
+  add_networks: True
+  add_cinder: True
+
+percona:
+  replication: True
+
+common:
+  ipmi:
+    enabled: False
+    state: probe
+  system_tools:
+    mcelog: False
+  ursula_monitoring:
+    method: tar # git|tar
+    tar_url: https://file-mirror.openstack.blueboxgrid.com/ursula-monitoring/master.tar.gz
+    tar_version: master
+#  ntpd:
+#    servers: []
+#      - servertime.service.softlayer.com
+  ssh:
+    client_alive_interval: 1800
+
+heat:
+  enabled: True
+  plugin_dirs:
+    - '/opt/openstack/current/heat/lib/heat/ibm_sw_orch/heat/'
+  logging:
+    debug: True
+    verbose: True
+
+ceilometer:
+  enabled: False
+  logging:
+    debug: True
+    verbose: True
+
+aodh:
+  enabled: False
+  logging:
+    debug: True
+    verbose: True
+
+ironic:
+  enabled: False
+  logging:
+    debug: True
+    verbose: True
+
+docker:
+  enabled: False
+
+novadocker:
+  enabled: False
+
+haproxy:
+  enabled: True
+
+logging:
+  enabled: False
+
+keystonev3:
+  enabled: True
+
+magnum:
+  enabled: False
+  debug: True
+
+serverspec:
+  enabled: False
+
+inspec:
+  enabled: False
+
+#openstack-ansible-security overrides
+security_enable_chrony: false
+security_ssh_permit_root_login: 'no'
+security_ssh_client_alive_count_max: 0
+security_password_minimum_length: 8
+security_password_minimum_days: 1
+security_password_maximum_days: 90
+security_password_warn_age: 7
+security_audit_DAC_chmod: yes                      # V-38543
+security_audit_DAC_chown: yes                    # V-38545
+security_audit_DAC_lchown: yes                     # V-38558
+security_audit_DAC_fchmod: yes                     # V-38547
+security_audit_DAC_fchmodat: yes                   # V-38550
+security_audit_DAC_fchown: yes                     # V-38552
+security_audit_DAC_fchownat: yes                   # V-38554
+security_audit_DAC_fremovexattr: yes               # V-38556
+security_audit_DAC_lremovexattr: yes               # V-38559
+security_audit_DAC_fsetxattr: yes                  # V-38557
+security_audit_DAC_lsetxattr: yes                  # V-38561
+security_audit_DAC_setxattr: yes                   # V-38565
+security_audit_deletions: yes                      # V-38575
+security_audit_failed_access: yes                  # V-38566
+security_enable_grub_update: no

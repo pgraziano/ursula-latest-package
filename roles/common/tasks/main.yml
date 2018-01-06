@@ -1,0 +1,214 @@
+---
+- name: set hostname
+  hostname: name={{ hostname }}
+  when: hostname is defined
+
+- name: create facts.d
+  file: dest=/etc/ansible/facts.d state=directory
+
+- name: disable tuned service before our tunnig
+  service: name=tuned state=stopped enabled=no
+  when: ursula_os == 'rhel'
+
+- name: mask unwanted tuned service
+  command: systemctl mask tuned.service
+  when: ursula_os == 'rhel'
+
+- block:
+  - name: ubuntu apt source list
+    template: src=etc/apt/sources.list dest=/etc/apt/sources.list
+    when: openstack.ubuntu_mirror is defined
+    notify:
+      - update apt index
+
+  - meta: flush_handlers
+
+  - name: update apt index
+    apt: update_cache=yes cache_valid_time=3600
+    tags: ['prereboot']
+    register: result
+    until: result|succeeded
+    retries: 5
+  when: ansible_distribution == "Ubuntu"
+
+- name: set selinux mode  on redhat
+  selinux:
+    policy: targeted
+    state: "{{ common.selinux.mode }}"
+  when: ursula_os == "rhel" and common.selinux.enabled|bool
+  tags: selinux
+
+- name: secure paths sudoers operations
+  lineinfile:
+    dest: /etc/sudoers
+    regexp: "^Defaults.*?secure_path"
+    line: 'Defaults        secure_path="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"'
+    state: present
+  tags: sudoers
+
+- name: disable require tty for sudoers
+  lineinfile:
+    dest: /etc/sudoers
+    regexp: "^Defaults.*?requiretty"
+    state: absent
+  tags: sudoers
+
+- include: system-tools.yml
+
+- include: python.yml
+  tags: pip, python
+
+
+- include: ruby.yml
+  tags: ruby
+
+- name: set UTC timezone for Ubuntu
+  template: src=etc/timezone dest=/etc/timezone owner=root group=root mode=0644
+  notify:
+    - update timezone
+  when: ansible_distribution in ["Ubuntu"]
+
+- name: Check timezone for RHEL
+  command: timedatectl status | grep Timezone | grep UTC
+  changed_when: false
+  failed_when: false
+  register: timezone
+  when: ansible_distribution in ["CentOS","RedHat"]
+
+- name: set UTC timezone for RHEL
+  command: timedatectl set-timezone UTC
+  when: ansible_distribution in ["CentOS","RedHat"] and
+        timezone.rc != 0
+
+- name: state path base directory
+  file: dest={{ state_path_base }} state=directory
+
+- include: ssl.yml
+  tags: [ssl, common-ssl]
+
+- include: ssh.yml
+  tags: ssh
+
+- include: remove-default-users.yml
+
+- include: networking.yml
+
+- include: password-policy.yml
+
+- include: system-file-permissions.yml
+
+- name: remove default sysctl.conf's entry
+  sysctl:
+    name: "{{ item.name }}"
+    state: absent
+    sysctl_file: /etc/sysctl.conf
+    ignoreerrors: yes
+  with_items: "{{ common.os_tuning_params_clean }}"
+
+- include: ufw.yml
+  when: ursula_os == 'ubuntu'
+  tags: firewall
+
+- include: iptables.yml
+  when: ursula_os == 'rhel'
+  tags: firewall
+
+- include: ntpd.yml
+  tags: ntp
+  when: common.ntp.client == 'ntpd'
+
+- include: chrony.yml
+  tags: ntp
+  when: common.ntp.client == 'chrony'
+
+# Include serial console before kernel-tuning to build serial_console_cmdline
+- include: serial-console.yml tty={{ common.serial_console.name }}
+                              baud_rate={{ common.serial_console.baud_rate }}
+  when: common.serial_console.enabled | bool and ursula_os == 'ubuntu'
+  tags: ['prereboot']
+
+- include: ipmi.yml
+  when: common.ipmi.enabled
+  tags: ['prereboot']
+
+- include: kernel-tuning.yml
+  tags: ['prereboot']
+  when: ursula_os == 'ubuntu'
+
+- include: disable-swap.yml
+
+- include: hwraid.yml
+  when:
+    - common.hwraid.enabled
+    - ansible_architecture != "ppc64le"
+    - ursula_os == 'ubuntu'
+  tags: hwraid
+
+- include: hwraid-ppc.yml
+  when: common.hwraid.enabled and ansible_architecture == "ppc64le"
+  tags: hwraid
+
+- name: remove unwanted packages
+  package:
+    name: "{{ item }}"
+    state: absent
+  with_items: "{{ common.packages_to_remove }}"
+  register: result
+  until: result|succeeded
+  retries: 5
+
+- name: fetch Ursula revision
+  local_action: command git describe --tags
+  run_once: true
+  become: no
+  register: ursula_git_describe
+
+- name: store Ursula revision
+  set_fact: ursula_revision={{ ursula_git_describe.stdout }}
+
+# run this last so we only update if run was successful
+- name: drop an motd with ursula metadata for ubuntu
+  template:
+    src: etc/update-motd.d/90-ursula-motd
+    dest: /etc/update-motd.d/90-ursula-motd
+    mode: 0755
+  when: ursula_os == 'ubuntu'
+
+- name: drop an motd with ursula metadata for rhel
+  lineinfile:
+    destfile: /etc/motd
+    regexp: "^{{ item.0 }}"
+    line: "{{ item.0 }}: {{ item.1 }}"
+  with_together:
+    - ['Ursula Node Data', 'Stack', 'Release', 'Deployed', 'Groups']
+    - - ""
+      - "{{ stack_env }}"
+      - "{{ ursula_revision }}"
+      - "{{ ansible_date_time['iso8601'] }}"
+      - "{{ group_names | join(', ') }}"
+  when: ursula_os == 'rhel'
+
+- name: drop ursula release file
+  template:
+    src: etc/ursula-release
+    dest: /etc/ursula-release
+    mode: 0644
+
+- name: include stack name in /etc/issue
+  lineinfile: dest=/etc/issue regexp="^{{ stack_env }} OpenStack Node" line="{{ stack_env }} OpenStack Node"
+
+- include: monitoring.yml
+  tags:
+    - monitoring
+    - common
+  when: monitoring.enabled|default('True')|bool
+
+- include: audit-logging.yml
+  tags:
+    - logrotate
+    - logging
+
+- include: serverspec.yml
+  tags:
+    - serverspec
+  when: serverspec.enabled|default('False')|bool

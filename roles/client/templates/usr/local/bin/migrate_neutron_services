@@ -1,0 +1,73 @@
+#!/usr/bin/env python2.7
+
+import logging
+import os
+import sys
+import time
+import neutronclient.neutron.client
+import neutronclient.common.exceptions
+
+from keystoneauth1.identity import v3
+from keystoneauth1 import session
+
+dest_node = os.environ['HOSTNAME']
+
+print "Moving neutron services to %s...\n" % (dest_node)
+
+neutron_auth = v3.Password(auth_url=os.environ['OS_AUTH_URL'],
+                           username=os.environ['OS_USERNAME'],
+                           password=os.environ['OS_PASSWORD'],
+                           project_name=os.environ['OS_PROJECT_NAME'],
+                           user_domain_name=os.environ['OS_USER_DOMAIN_NAME'],
+                           project_domain_name=(
+                              os.environ['OS_PROJECT_DOMAIN_NAME'])
+                           )
+sess = session.Session(auth=neutron_auth, verify=False)
+
+#logging.basicConfig(level=logging.DEBUG)
+neutron = neutronclient.neutron.client.Client('2.0', session=sess)
+neutron.format = 'json'
+
+
+#
+# Build as two level dictionary by host then type of Neutron agents
+#
+agents = neutron.list_agents()
+
+host_agents = {}
+
+for agent in agents['agents']:
+    if agent['host'] not in host_agents.keys():
+        host_agents[agent['host']] = {}
+
+    host_agents[agent['host']][agent['agent_type']] = agent['id']
+
+
+#
+# Move routers between L3 agents
+#
+if dest_node in host_agents.keys() and 'L3 agent' in host_agents[dest_node].keys():
+    dest_l3_agent = host_agents[dest_node]['L3 agent']
+    routers = neutron.list_routers()
+
+    for router in routers['routers']:
+        if router['ha'] :
+           continue;
+        hosting_agents = neutron.list_l3_agent_hosting_routers(router['id'])
+
+        for hosting_agent in hosting_agents['agents']:
+            if hosting_agent['host'] == dest_node:
+                continue
+
+            neutron.remove_router_from_l3_agent(hosting_agent['id'], router['id'])
+            for attempt in range(3):
+                try:
+                    neutron.add_router_to_l3_agent(dest_l3_agent, {'router_id': router['id']})
+                    print "Moved %s (%s) router" % (router['name'], router['id'])
+                except neutronclient.common.exceptions.NeutronClientException:
+                    time.sleep(1)
+                    continue
+                break
+
+else:
+    print "No L3 agent exists on %s" % (dest_node)

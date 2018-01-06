@@ -1,0 +1,34 @@
+---
+- name: iscsi target framework conf dir
+  file: dest=/etc/tgt/conf.d state=directory
+
+- name: tgt config files
+  template: src={{ item.value.src }} dest={{ item.value.dest }} mode=0644
+  with_dict:
+    targets:
+      src: etc/tgt/targets.conf
+      dest: /etc/tgt/targets.conf
+    cinder_tgt:
+      src: etc/tgt/conf.d/cinder_tgt.conf
+      dest: /etc/tgt/conf.d/cinder_tgt.conf
+  notify: restart tgt service
+
+- name: ensure tgt service is running
+  service: name="{{ cinder.tgt_service[ursula_os] }}" state=started enabled=true
+
+# TODO: allow for device-backed VGs in addition to file-backed VGs
+- block:
+  - name: file based cinder volume group
+    cinder_volume_group: file={{ cinder.volume_file }}
+                         size={{ cinder.volume_file_size }}
+    when: cinder.volume_type == "file"
+
+  - name: device based cinder volume group
+    lvg:  vg={{ cinder.volume_group }} pvs={{ cinder.volume_device }}
+    when: cinder.volume_type == "device"
+  when:
+    - cinder.create_vg|bool
+    - not cinder.encryption.fixed_key or (cinder.encryption.fixed_key and "compute" not in group_names)
+
+- name: iscsi start
+  service: name="{{ cinder.iscsi_service[ursula_os] }}" state=started enabled=true

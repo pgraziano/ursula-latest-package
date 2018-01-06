@@ -1,0 +1,193 @@
+---
+# Ensure this file is written before kvm_intel or kvm_amd module is loaded
+- name: enable nested kvm
+  template: src=etc/modprobe.d/kvm-nested.conf
+            dest=/etc/modprobe.d/kvm-nested.conf owner=root group=root
+            mode=0644
+
+- name: install nova-compute packages (ubuntu)
+  package: name={{ item }}
+  with_items:
+    - librbd1={{ nova.librbd1_version }}
+    - cpu-checker
+    - libvirt-bin={{ nova.libvirt_bin_version }}
+    - libvirt-dev={{ nova.libvirt_bin_version }}
+    - python-libvirt={{ nova.python_libvirt_version }}
+    - qemu-block-extra={{ nova.qemu_kvm_version }}
+    - qemu-system-common={{ nova.qemu_kvm_version }}
+    - qemu-utils={{ nova.qemu_kvm_version }}
+    - "{{ nova.qemu_system_package }}={{ nova.qemu_kvm_version }}"
+    - qemu-kvm={{ nova.qemu_kvm_version }}
+    - open-iscsi
+    - pkg-config
+    - genisoimage
+    - util-linux
+  notify: restart nova services
+  when: ursula_os == 'ubuntu'
+  register: result
+  until: result|succeeded
+  retries: 5
+
+#FIXME Do we need to install this in rhosp?
+- name: install nova-compute packages
+  package: name={{ item }}
+  with_items:
+    - "librbd1-{{ nova.librbd1_version }}"
+    - libvirt-python
+    - qemu-kvm
+    - "{{ nova.qemu_system_package }}"
+    - libiscsi
+    - iscsi-initiator-utils
+    - libvirt-devel
+    - libvirt-daemon
+    - libvirt-daemon-driver-qemu
+    - libvirt-daemon-kvm
+    - genisoimage
+    - util-linux
+  notify:
+    - restart nova services
+    - restart libvirt-bin
+  when: ursula_os == 'rhel'
+  register: result
+  until: result|succeeded
+  retries: 5
+
+# We want to be sure that libvirt python
+# modules are built against the libvirt running on the host, so build
+# this part of the virtualenv on the system itself
+# # This is done with command rather than pip due to a bug where the venv
+# # would get re-created on this task, breaking things badly. pip module
+# # needs to be fixed first.
+- name: install libvirt-python in package venv (ubuntu)
+  command: "{{ 'nova'|ursula_package_path(openstack_package_version) }}/bin/pip install libvirt-python"
+  register: lvpout
+  changed_when: lvpout.stdout|search("Successfully installed")
+  notify: restart nova services
+  when: openstack_install_method == 'package' and ursula_os == 'ubuntu'
+
+- name: install libvirt-python in source venv
+  command: "{{ openstack_source.virtualenv_base }}/nova/bin/pip install libvirt-python"
+  register: lvpout
+  changed_when: lvpout.stdout|search("Successfully installed")
+  notify: restart nova services
+  when: openstack_install_method == 'source'
+
+- name: delete lines in libvirtd.conf
+  lineinfile:
+    dest: "/etc/libvirt/{{ nova.libvirt[ursula_os].config_file }}"
+    regexp: "{{ item.value.regexp }}"
+    line: "{{ item.value.line }}"
+    state: absent
+  with_dict:
+    listen_tcp:
+      regexp: '^listen_tcp\s*='
+      line: "listen_tcp = 1"
+    auth_tcp:
+      regexp: '^auth_tcp\s*='
+      line: 'auth_tcp = \"none\"'
+  notify: restart libvirt-bin
+
+- name: add/update various lines in libvirtd.conf
+  lineinfile:
+    dest: "/etc/libvirt/{{ nova.libvirt[ursula_os].config_file }}"
+    regexp: "{{ item.value.regexp }}"
+    line: "{{ item.value.line }}"
+  with_dict:
+    listen_tls:
+      regexp: '^listen_tls\s*='
+      line: "listen_tls = 0"
+  notify: restart libvirt-bin
+
+- name: update variables in libvirtd.conf for compliance
+  ini_file:
+    dest: /etc/libvirt/libvirtd.conf
+    section: ~
+    option: '{{ item.option }}'
+    value: '{{ item.value }}'
+  with_items:
+    - option: 'unix_sock_group'
+      value: '"{{ nova.libvirt[ursula_os].group }}"'
+    - option: 'unix_sock_ro_perms'
+      value: '"0770"'
+    - option: 'unix_sock_rw_perms'
+      value: '"0770"'
+  notify: restart libvirt-bin
+
+- name: remove libvirtd defaults
+  lineinfile:
+    dest: "{{ nova.libvirt[ursula_os].defaults }}"
+    regexp: '^libvirtd_opts\s*='
+    line: 'libvirtd_opts=\"-d -l\"'
+    state: absent
+  notify: restart libvirt-bin
+
+- name: update qemu migration option
+  lineinfile:
+    dest: /etc/libvirt/qemu.conf
+    regexp: '^allow_incoming_qemukvm\s*='
+    line: 'allow_incoming_qemukvm = 1'
+  notify: restart libvirt-bin
+
+- name: update qemu options for compliance
+  ini_file:
+    dest: /etc/libvirt/qemu.conf
+    section: ~
+    option: '{{ item.option }}'
+    value: '{{ item.value }}'
+  with_items:
+    - option: 'user'
+      value: '"{{ nova.libvirt[ursula_os].qemu_user }}"'
+    - option: 'group'
+      value: '"{{ nova.libvirt[ursula_os].qemu_group }}"'
+  notify: restart libvirt-bin
+
+- name: ensure kvm is supported by cpu and enabled in bios (ubuntu)
+  command: kvm-ok
+  when:
+    - nova.libvirt_type == 'kvm'
+    - ursula_os == 'ubuntu'
+  changed_when: False
+
+- name: ensure kvm is supported by cpu and enabled in bios (rhel)
+  command: egrep '(vmx|svm)' /proc/cpuinfo
+  when:
+    - nova.libvirt_type == 'kvm'
+    - ursula_os == 'rhel'
+  changed_when: False
+
+- name: generate really unique uuid
+  command: uuidgen -t
+  args:
+    creates: /etc/machine-id
+  register: machine_id
+
+- name: write machine-id for really uniqe uuid
+  copy:
+    dest: /etc/machine-id
+    content: "{{ machine_id.stdout + '\n'}}"
+    force: no
+  when: machine_id | changed
+  notify: restart nova compute
+
+- name: read machine-id to populate libvirt host_uuid
+  slurp:
+    src: /etc/machine-id
+  register: slurp_id
+
+- name: write machine-id to libvirtd.conf
+  lineinfile:
+    dest: /etc/libvirt/libvirtd.conf
+    regexp: '^host_uuid\s*='
+    line: host_uuid = "{{ slurp_id.content | b64decode | trim }}"
+    insertafter: '^#host_uuid\s*='
+  notify: restart libvirt-bin
+
+- name: shutdown default libvirt network if started
+  shell: ip addr show virbr0 && virsh net-destroy default
+  failed_when: False
+
+- name: disable libvirt default network autostart
+  file: dest=/etc/libvirt/qemu/networks/autostart/default.xml state=absent
+
+- name: add nova to the {{ nova.libvirt[ursula_os].group }} group
+  user: name=nova groups={{ nova.libvirt[ursula_os].group }} append=true system=yes createhome=no

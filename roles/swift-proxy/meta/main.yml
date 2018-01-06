@@ -1,0 +1,9 @@
+---
+dependencies:
+  - role: swift-common
+  - role: memcached
+  - role: endpoints
+  - role: openstack-firewall
+    rule_name: swift
+    rules_type_input:
+      - { protocol: tcp, port: "{{ endpoints.swift.port.haproxy_api }}" }

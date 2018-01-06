@@ -1,0 +1,4 @@
+#!/bin/sh
+
+# Remove logs for Neutron TAP interfaces
+find /var/log/upstart/ -name network-interface-tap\*.log -mtime +1 -delete

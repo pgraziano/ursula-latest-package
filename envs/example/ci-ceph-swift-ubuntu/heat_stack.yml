@@ -1,0 +1,304 @@
+heat_template_version: 2013-05-23
+
+description: HOT template to deploy Ursula Tests env
+
+parameters:
+  image:
+    type: string
+    description: Name of image to use for servers
+    default: ubuntu-14.04
+  flavor:
+    type: string
+    description: Flavor to use for servers
+    default: m1.large
+  flavor_ceph_swift:
+    type: string
+    description: Flavor to use for ceph and swift servers
+    default: ci_ceph_swift
+  network:
+    type: string
+    description: Name of Neutron network into which servers get deployed
+    default: internal
+  floating_ip_pool:
+    type: string
+    description: Name of floating ip pool to use
+    default: external
+  key_name:
+    type: string
+    description: Name of the ssh keypair to use for servers
+    default: ceph_swift_ubuntu_key
+  security_group:
+    type: string
+    description: Name of the security group to use for servers
+    default: ceph_swift_ubuntu_ursula
+  az:
+    type: string
+    description: Name of availability-zone to use for servers
+    default: dev_compute_standard
+  controller-0_name:
+    type: string
+    description: Name of controller-0 server
+    default: ceph_swift_ubuntu_controller-0
+  controller-1_name:
+    type: string
+    description: Name of controller-1 server
+    default: ceph_swift_ubuntu_controller-1
+  compute-0_name:
+    type: string
+    description: Name of compute-0 server
+    default: ceph_swift_ubuntu_compute-0
+  ceph-0_name:
+    type: string
+    description: Name of ceph-0 server
+    default: ceph_swift_ubuntu_ceph-0
+  ceph-1_name:
+    type: string
+    description: Name of ceph-1 server
+    default: ceph_swift_ubuntu_ceph-1
+  ceph-2_name:
+    type: string
+    description: Name of ceph-2 server
+    default: ceph_swift_ubuntu_ceph-2
+  swift-0_name:
+    type: string
+    description: Name of swift-0 server
+    default: ceph_swift_ubuntu_swift-0
+  swift-1_name:
+    type: string
+    description: Name of swift-1 server
+    default: ceph_swift_ubuntu_swift-1
+  swift-2_name:
+    type: string
+    description: Name of swift-2 server
+    default: ceph_swift_ubuntu_swift-2
+
+resources:
+
+  server_security_group:
+    type: OS::Neutron::SecurityGroup
+    properties:
+      description: Security group for servers of Ursula Tests
+      name: { get_param: security_group }
+      rules:
+        - remote_ip_prefix: 0.0.0.0/0
+          protocol: tcp
+          port_range_min: 22
+          port_range_max: 22
+        - remote_ip_prefix: 0.0.0.0/0
+          protocol: tcp
+          port_range_min: 80
+          port_range_max: 80
+        - remote_ip_prefix: 0.0.0.0/0
+          protocol: tcp
+          port_range_min: 443
+          port_range_max: 443
+        - remote_ip_prefix: 0.0.0.0/0
+          protocol: tcp
+          port_range_min: 35357
+          port_range_max: 35357
+        - remote_ip_prefix: 0.0.0.0/0
+          protocol: tcp
+          port_range_min: 5000
+          port_range_max: 5000
+        - remote_ip_prefix: 0.0.0.0/0
+          protocol: tcp
+          port_range_min: 6080
+          port_range_max: 6080
+        - remote_ip_prefix: 0.0.0.0/0
+          protocol: tcp
+          port_range_min: 8774
+          port_range_max: 8774
+        - remote_ip_prefix: 0.0.0.0/0
+          protocol: tcp
+          port_range_min: 8778
+          port_range_max: 8778
+        - remote_ip_prefix: 0.0.0.0/0
+          protocol: tcp
+          port_range_min: 9311
+          port_range_max: 9311
+        - remote_ip_prefix: 0.0.0.0/0
+          protocol: tcp
+          port_range_min: 8776
+          port_range_max: 8776
+        - remote_ip_prefix: 0.0.0.0/0
+          protocol: tcp
+          port_range_min: 8777
+          port_range_max: 8777
+        - remote_ip_prefix: 0.0.0.0/0
+          protocol: tcp
+          port_range_min: 9393
+          port_range_max: 9393
+        - remote_ip_prefix: 0.0.0.0/0
+          protocol: tcp
+          port_range_min: 9292
+          port_range_max: 9292
+        - remote_ip_prefix: 0.0.0.0/0
+          protocol: tcp
+          port_range_min: 9696
+          port_range_max: 9696
+        - remote_ip_prefix: 0.0.0.0/0
+          protocol: tcp
+          port_range_min: 8090
+          port_range_max: 8090
+        - remote_ip_prefix: 0.0.0.0/0
+          protocol: icmp
+        - ethertype: 'IPv4'
+          remote_mode: 'remote_group_id'
+        - ethertype: 'IPv6'
+          remote_mode: 'remote_group_id'
+
+  ssh_keypair:
+    type: OS::Nova::KeyPair
+    properties:
+      save_private_key: true
+      name: { get_param: key_name }
+
+  controller-0:
+    type: OS::Nova::Server
+    properties:
+      name: { get_param: controller-0_name }
+      image: { get_param: image }
+      flavor: { get_param: flavor }
+      key_name: { get_resource: ssh_keypair }
+      user_data_format: RAW
+      security_groups: [{ get_resource: server_security_group }]
+      networks:
+        - network: { get_param: network }
+      availability_zone: { get_param: az }
+
+  controller-1:
+    type: OS::Nova::Server
+    properties:
+      name: { get_param: controller-1_name }
+      image: { get_param: image }
+      flavor: { get_param: flavor }
+      key_name: { get_resource: ssh_keypair }
+      user_data_format: RAW
+      security_groups: [{ get_resource: server_security_group }]
+      networks:
+        - network: { get_param: network }
+      availability_zone: { get_param: az }
+
+  compute-0:
+    type: OS::Nova::Server
+    properties:
+      name: { get_param: compute-0_name }
+      image: { get_param: image }
+      flavor: { get_param: flavor }
+      key_name: { get_resource: ssh_keypair }
+      user_data_format: RAW
+      security_groups: [{ get_resource: server_security_group }]
+      networks:
+        - network: { get_param: network }
+      availability_zone: { get_param: az }
+
+  ceph-0:
+    type: OS::Nova::Server
+    properties:
+      name: { get_param: ceph-0_name }
+      image: { get_param: image }
+      flavor: { get_param: flavor_ceph_swift }
+      key_name: { get_resource: ssh_keypair }
+      user_data_format: RAW
+      security_groups: [{ get_resource: server_security_group }]
+      networks:
+        - network: { get_param: network }
+      availability_zone: { get_param: az }
+
+  ceph-1:
+    type: OS::Nova::Server
+    properties:
+      name: { get_param: ceph-1_name }
+      image: { get_param: image }
+      flavor: { get_param: flavor_ceph_swift }
+      key_name: { get_resource: ssh_keypair }
+      user_data_format: RAW
+      security_groups: [{ get_resource: server_security_group }]
+      networks:
+        - network: { get_param: network }
+      availability_zone: { get_param: az }
+
+  ceph-2:
+    type: OS::Nova::Server
+    properties:
+      name: { get_param: ceph-2_name }
+      image: { get_param: image }
+      flavor: { get_param: flavor_ceph_swift }
+      key_name: { get_resource: ssh_keypair }
+      user_data_format: RAW
+      security_groups: [{ get_resource: server_security_group }]
+      networks:
+        - network: { get_param: network }
+      availability_zone: { get_param: az }
+
+  swift-0:
+    type: OS::Nova::Server
+    properties:
+      name: { get_param: swift-0_name }
+      image: { get_param: image }
+      flavor: { get_param: flavor_ceph_swift }
+      key_name: { get_resource: ssh_keypair }
+      user_data_format: RAW
+      security_groups: [{ get_resource: server_security_group }]
+      networks:
+        - network: { get_param: network }
+      availability_zone: { get_param: az }
+
+  swift-1:
+    type: OS::Nova::Server
+    properties:
+      name: { get_param: swift-1_name }
+      image: { get_param: image }
+      flavor: { get_param: flavor_ceph_swift }
+      key_name: { get_resource: ssh_keypair }
+      user_data_format: RAW
+      security_groups: [{ get_resource: server_security_group }]
+      networks:
+        - network: { get_param: network }
+      availability_zone: { get_param: az }
+
+  swift-2:
+    type: OS::Nova::Server
+    properties:
+      name: { get_param: swift-2_name }
+      image: { get_param: image }
+      flavor: { get_param: flavor_ceph_swift }
+      key_name: { get_resource: ssh_keypair }
+      user_data_format: RAW
+      security_groups: [{ get_resource: server_security_group }]
+      networks:
+        - network: { get_param: network }
+      availability_zone: { get_param: az }
+
+outputs:
+  private_key:
+    description: Private key
+    value: { get_attr: [ ssh_keypair, private_key ] }
+
+  controller-0:
+    description: IP address of controller-0 in provider network
+    value: { get_attr: [ controller-0, first_address ] }
+  controller-1:
+    description: IP address of controller-1 in provider network
+    value: { get_attr: [ controller-1, first_address ] }
+  compute-0:
+    description: IP address of compute-0 in provider network
+    value: { get_attr: [ compute-0, first_address ] }
+  ceph-0:
+    description: IP address of ceph-0 in provider network
+    value: { get_attr: [ ceph-0, first_address ] }
+  ceph-1:
+    description: IP address of ceph-1 in provider network
+    value: { get_attr: [ ceph-1, first_address ] }
+  ceph-2:
+    description: IP address of ceph-2 in provider network
+    value: { get_attr: [ ceph-2, first_address ] }
+  swift-0:
+    description: IP address of swift-0 in provider network
+    value: { get_attr: [ swift-0, first_address ] }
+  swift-1:
+    description: IP address of swift-1 in provider network
+    value: { get_attr: [ swift-1, first_address ] }
+  swift-2:
+    description: IP address of swift-2 in provider network
+    value: { get_attr: [ swift-2, first_address ] }

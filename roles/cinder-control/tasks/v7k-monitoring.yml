@@ -1,0 +1,27 @@
+---
+- name: create v7k sshkey directory
+  file: dest=/etc/cinder/v7k/ssh/monitoring state=directory owner=root
+        group=root mode=0755
+
+- name: drop a cinder private key
+  template: src=etc/v7k/ssh/monitoring/id_rsa
+            dest=/etc/cinder/v7k/ssh/monitoring/id_rsa owner=root
+            group=root mode=0600
+
+- name: v7k canister status check
+  sensu_check: name=canister-status plugin=check-v7k-canister.py
+               args='-v {{v7k.management_ip}} -u {{v7k.users.monitoring.name}} -i /etc/cinder/v7k/ssh/monitoring/id_rsa -p {{v7k.ssh_port}} --criticality critical' use_sudo=true
+  notify: restart sensu-client
+
+
+- name: v7k canister disk check
+  sensu_check: name=v7k-disk-status plugin=check-v7k-drive.py
+               args='-v {{v7k.management_ip}} -u {{v7k.users.monitoring.name}} -i /etc/cinder/v7k/ssh/monitoring/id_rsa -p {{v7k.ssh_port}} -n {{item}} --criticality critical' use_sudo=true
+  with_items: "{{ v7k.storage_pools }}"
+  notify: restart sensu-client
+
+
+- name: v7k canister load metrics
+  sensu_metrics_check: name=canister-load plugin=metrics-v7k.py
+               args='-v {{v7k.management_ip}} -u {{v7k.users.monitoring.name}} -i /etc/cinder/v7k/ssh/monitoring/id_rsa  -p {{v7k.ssh_port}} --scheme {{ monitoring.graphite.cluster_prefix }}' use_sudo=true
+  notify: restart sensu-client

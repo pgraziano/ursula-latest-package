@@ -1,0 +1,12 @@
+---
+- name: restart-swift-container-services
+  service:
+    name: "{{ item.name }}"
+    state: restarted
+  with_items:
+    - "{{ swift.services.swift_container }}"
+    - "{{ swift.services.swift_container_auditor }}"
+    - "{{ swift.services.swift_container_replicator }}"
+    - "{{ swift.services.swift_container_sync }}"
+    - "{{ swift.services.swift_container_updater }}"
+  when: start_container|bool

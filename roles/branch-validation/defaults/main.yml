@@ -1,0 +1,4 @@
+---
+temp_key_dest: /tmp/validate-key
+local_wait_for: false
+converged: false

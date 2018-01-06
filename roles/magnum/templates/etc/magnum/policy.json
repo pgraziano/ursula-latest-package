@@ -1,0 +1,42 @@
+{
+    "context_is_admin":  "role:admin",
+    "admin_or_owner":  "is_admin:True or project_id:%(project_id)s",
+    "default": "rule:admin_or_owner",
+    "admin_api": "rule:context_is_admin",
+    "admin_or_user": "is_admin:True or user_id:%(user_id)s",
+
+    "bay:create": "rule:default",
+    "bay:delete": "rule:default",
+    "bay:detail": "rule:default",
+    "bay:get": "rule:default",
+    "bay:get_all": "rule:default",
+    "bay:update": "rule:default",
+
+    "baymodel:create": "rule:default",
+    "baymodel:delete": "rule:default",
+    "baymodel:detail": "rule:default",
+    "baymodel:get": "rule:default",
+    "baymodel:get_all": "rule:default",
+    "baymodel:update": "rule:default",
+    "baymodel:publish": "rule:admin_or_owner",
+
+    "cluster:create": "rule:default",
+    "cluster:delete": "rule:default",
+    "cluster:detail": "rule:default",
+    "cluster:get": "rule:default",
+    "cluster:get_all": "rule:default",
+    "cluster:update": "rule:default",
+
+    "clustertemplate:create": "rule:default",
+    "clustertemplate:delete": "rule:default",
+    "clustertemplate:detail": "rule:default",
+    "clustertemplate:get": "rule:default",
+    "clustertemplate:get_all": "rule:default",
+    "clustertemplate:update": "rule:default",
+    "clustertemplate:publish": "rule:admin_or_owner",
+
+    "certificate:create": "rule:admin_or_user",
+    "certificate:get": "rule:admin_or_user",
+
+    "magnum-service:get_all": "rule:admin_api"
+}

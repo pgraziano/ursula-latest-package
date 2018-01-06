@@ -1,0 +1,37 @@
+---
+- block:
+  - name: permit access to {{ rule_name }}
+    ufw: rule=allow to_port={{ item.port }} proto={{ item.protocol }}
+    with_items: "{{ rules_type_input | default([]) }}"
+    tags: firewall
+  when: ursula_os == 'ubuntu'
+
+- block:
+  - name: Persist Permit access to {{ rule_name }}
+    lineinfile:
+      dest: /etc/sysconfig/iptables
+      state: present
+      regexp: "^-A INPUT.*-p {{ item.protocol }} --dport {{ item.port }}.*-j ACCEPT"
+      insertbefore: "^-A INPUT -j REJECT --reject-with icmp-host-prohibited$"
+      line: "-A INPUT -m state --state NEW -m {{ item.protocol }} -p {{ item.protocol }} --dport {{ item.port }} -j ACCEPT"
+      backup: yes
+    with_items: "{{ rules_type_input | default([]) }}"
+    register: iptables_changed
+    tags: firewall
+
+  - name: Permit access to {{ rule_name }}
+    iptables:
+      action: insert
+      table: filter
+      chain: INPUT
+      ctstate: NEW
+      match: "{{ item.0.protocol }}"
+      protocol: "{{ item.0.protocol }}"
+      destination_port: "{{ item.0.port }}"
+      jump: ACCEPT
+    when: item.1.changed
+    with_together:
+      - "{{ rules_type_input | default([]) }}"
+      - "{{ iptables_changed.results }}"
+    tags: firewall
+  when: ursula_os == 'rhel'

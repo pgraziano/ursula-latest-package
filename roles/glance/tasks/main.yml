@@ -1,0 +1,165 @@
+---
+- name: Check if glance user exists
+  action: shell getent passwd glance
+  register: glance_user
+  failed_when: False
+  changed_when: False
+
+- name: glance user
+  user: name=glance shell=/bin/false createhome=no
+  when: glance_user|success
+
+- name: glance user
+  user: name=glance comment=glance shell=/bin/false system=yes home=/nonexistent createhome=no
+  when: glance_user|failed
+
+- name: /etc/glance
+  file: dest=/etc/glance state=directory
+
+- name: glance images dirs
+  file:
+    dest: "{{ item }}"
+    state: directory
+    owner: glance
+    group: glance
+  with_items:
+    - "{{ glance.state_path }}/images"
+    - "{{ glance.state_path }}/image-cache"
+
+- name: glance cache dir
+  file: dest=/var/cache/glance state=directory mode=0700 owner=glance
+        group=glance
+
+- block:
+  - name: change the selinux label for the glance image dirs
+    sefcontext:
+      target: "{{ glance.state_path }}(/.*)?"
+      setype: glance_var_run_t
+      state: present
+
+  - name: apply the context immediately to nova cache dir
+    command: restorecon -R -v "{{ glance.state_path }}"
+    register: result
+    changed_when: "'restorecon reset' in result.stdout and result.rc == 0"
+    failed_when: result.rc != 0
+
+  - name: change the selinux label on the glance cache dir
+    sefcontext:
+      target: "/var/cache/glance(/.*)?"
+      setype: glance_var_run_t
+      state: present
+
+  - name: apply the context immediately to nova cache dir
+    command: restorecon -R -v /var/cache/glance
+    register: result
+    changed_when: "'restorecon reset' in result.stdout and result.rc == 0"
+    failed_when: "result.rc != 0"
+
+  when: ansible_distribution == 'RedHat'
+  tags: selinux
+
+- name: glance log dir
+  file: dest=/var/log/glance state=directory mode=2750 owner=glance group=adm
+
+- name: Change glance log dir acl
+  acl: name=/var/log/glance state=present default=yes etype={{ item.etype }} permissions={{ item.permission }}
+  with_items:
+    - etype: user
+      permission: rw
+    - etype: group
+      permission: r
+    - etype: other
+      permission: r
+
+- name: install glance services (ubuntu)
+  upstart_service:
+    name: "{{ item.name }}"
+    user: "{{ item.user }}"
+    cmd: "{{ item.cmd }}"
+  with_items:
+    - "{{ glance.services.glance_api }}"
+    - "{{ glance.services.glance_registry }}"
+  when: ursula_os == 'ubuntu'
+
+- name: install glance services (rhel)
+  systemd_service:
+    name: "{{ item.name }}"
+    description: "{{ item.desc }}"
+    type: "{{ item.type }}"
+    user: "{{ item.user }}"
+    cmd: "{{ item.cmd }}"
+    config_dirs: "{{ item.config_dirs }}"
+    config_files: "{{ item.config_files }}"
+    restart: "{{ item.restart }}"
+  with_items:
+    - "{{ glance.services.glance_api }}"
+    - "{{ glance.services.glance_registry }}"
+  when: ursula_os == 'rhel'
+
+- name: glance config
+  template: src={{ item }} dest=/etc/glance mode=0640
+            owner=root group=glance
+  with_fileglob: ../templates/etc/glance/*
+  notify:
+    - restart glance services
+
+- name: copy policy files to openstack-dashboard
+  template:
+    src: "etc/glance/policy.json"
+    dest: "/etc/openstack-dashboard/glance_policy.json"
+    owner: "root"
+    group: "{{ openstack_meta.apache[ursula_os].group }}"
+    mode: 0640
+  when: inventory_hostname in groups['controller']
+
+- name: stop glance services before db sync
+  service: name={{ item.name }} state=stopped
+  with_items:
+    - "{{ glance.services.glance_api }}"
+    - "{{ glance.services.glance_registry }}"
+  when: (database_create.changed or force_sync|default('false')|bool)
+  tags: db-migrate
+
+- name: sync glance database
+  command: glance-manage db_sync
+  when: database_create.changed or force_sync|default('false')|bool
+  run_once: true
+  changed_when: true
+  notify:
+    - restart glance services
+  # we want this to always be changed so that it can notify the service restart
+  tags: db-migrate
+
+- include: ceph_integration.yml
+  when: ceph.enabled
+
+- name: trigger restart on upgrades
+  debug:
+    msg: "Triggering service restart for upgrade"
+  changed_when: True
+  notify: restart glance services
+  tags: ['ceph', 'ceph-client']
+  when: (code_has_changed | default('False') | bool and upgrade | default('False') | bool) or
+        (glance.store_ceph | default(false) and cephclient_upgraded|default(false))
+
+- meta: flush_handlers
+
+- name: start glance services
+  service: name={{ item.name }} state=started enabled=true
+  with_items:
+    - "{{ glance.services.glance_api }}"
+    - "{{ glance.services.glance_registry }}"
+
+- include: image-sync.yml
+  when: glance.sync.enabled
+
+- include: monitoring.yml
+  tags:
+    - monitoring
+    - common
+  when: monitoring.enabled|default('True')|bool
+
+- include: logging.yml
+  tags:
+    - logrotate
+    - logging

@@ -1,0 +1,139 @@
+---
+- name: test various things from the controller
+  hosts: controller
+  tasks:
+  - name: save me a list of controller ips
+    set_fact: controller_ips="{{ hostvars|ursula_controller_ips(groups) }}"
+
+#  - name: horizon is up
+#    shell: curl -sSL -k http://localhost:8080 | grep "Login - OpenStack Dashboard"
+
+  - name: client stackrc has an cacert env variable
+    shell: grep OS_CACERT /root/stackrc
+
+  - name: common timezone is utc
+    shell: grep UTC /etc/timezone
+    when: ursula_os == 'ubuntu'
+
+  - name: common timezone is utc
+    shell: grep UTC /etc/localtime
+    when: ursula_os == 'rhel'
+
+  - name: common date command has utc
+    shell: date | grep UTC
+
+  - name: glance api has proper workers
+    shell: grep 'workers = 1' /etc/glance/glance-api.conf
+
+  - name: keystone config has memcached servers
+    shell: grep memcached_servers | grep {{ item }} /etc/keystone/keystone.conf
+    with_items: "{{ controller_ips }}"
+
+  - name: neutron dnsmasq has 8.8.8.8 upstream resolver
+    shell: grep 8.8.8.8 /etc/dnsmasq.conf
+
+  - name: neutron dnsmasq has 8.8.4.4 upstream resolver
+    shell: grep 8.8.4.4 /etc/dnsmasq.conf
+
+  - name: nova api has proper workers
+    shell: grep 'osapi_compute_workers = 1' /etc/nova/nova.conf
+
+  - name: nova metadata api has proper workers
+    shell: grep 'metadata_workers = 1' /etc/nova/nova.conf
+
+  - name: nova config has memcached servers
+    shell: grep memcached_servers | grep {{ item }} /etc/nova/nova.conf
+    with_items: "{{ controller_ips }}"
+
+  - name: nova config has rabbit server
+    shell: egrep "rabbit_host = [0-9.]+" /etc/nova/nova.conf
+    when: rabbitmq.cluster == false
+
+  - name: cinder config has rabbit server
+    shell: egrep "rabbit_host = [0-9.]+" /etc/cinder/cinder.conf
+    when: rabbitmq.cluster == false and cinder.enabled|bool
+
+  - name: nova config has rabbit cluster servers
+    shell: egrep rabbit_hosts=[0-9.]+:5672,[0-9.]+ /etc/nova/nova.conf
+    when: rabbitmq.cluster == true
+
+  - name: cinder config has rabbit cluster servers
+    shell: egrep "rabbit_hosts = [0-9.]+:5672,[0-9.]+" /etc/cinder/cinder.conf
+    when: rabbitmq.cluster == true
+
+  - name: rabbitmq has a properly configured cluser
+    shell: rabbitmqctl -q cluster_status | awk '/disc/,/\},/' | grep -c
+           controller | grep 2
+    when: rabbitmq.cluster == true
+
+  - name: rabbitmq has the management plugin enabled
+    shell: rabbitmq-plugins list | grep '\[E.*\] rabbitmq_management'
+    when: rabbitmq.cluster == true
+
+  - name: rabbitmq has the rabbitmqadmin script installed
+    shell: test -f /usr/local/bin/rabbitmqadmin
+    when: rabbitmq.cluster == true
+
+  - name: rabbitmq has a default user with administrator tag
+    shell: rabbitmqctl list_users | grep openstack | grep '\[administrator\]'
+
+  - name: iptables defaults to dropping connections from the internet
+    shell: ufw status verbose | egrep '^Default. deny .incoming.'
+    when: ursula_os == 'ubuntu'
+
+  - name: iptables lets ssh in from outside
+    shell: ufw status verbose | egrep '^22/tcp                     ALLOW IN    Anywhere'
+    when: ursula_os == 'ubuntu'
+
+  - name: all backends are up in haproxy
+    shell: curl -k -s -u admin:{{ secrets.admin_password }} https://127.0.0.1/haproxy_stats\;csv | awk '/DOWN/ {print;ec=1} END{exit ec}'
+    register: haproxy
+    ignore_errors: true
+
+  - name: restart novavncproxy
+    service: name=nova-novncproxy state=restarted
+    when: haproxy.rc != 0
+
+  - name: give novanovncproxy time to get up
+    pause: seconds=5
+    when: haproxy.rc != 0
+
+  - name: all backends are up in haproxy
+    shell: curl -k -s -u admin:{{ secrets.admin_password }} https://127.0.0.1/haproxy_stats\;csv | awk '/DOWN/ {print;ec=1} END{exit ec}'
+    when: haproxy.rc != 0 and cinder.enabled|bool
+
+#  - name: all backends are up in haproxy
+#    shell: curl -k -s -u admin:{{ secrets.admin_password }} https://127.0.0.1/haproxy_stats\;csv | grep -v cinder | awk '/DOWN/ {print;ec=1} END{exit ec}'
+#    when: haproxy.rc != 0 and not cinder.enabled|bool
+
+- name: tests on a single controller
+  hosts: controller[0]
+  tasks:
+  - name: horizon config has memcached servers
+    shell: grep memcached_servers | grep {{ item }} /etc/openstack-dashboard/local_settings.py
+    with_items: "{{ controller_ips }}"
+
+  - name: keystone should include OpenStack services
+    shell: . /root/stackrc; openstack service list | grep {{ item }}
+    with_items:
+      - keystone
+      - nova
+      - neutron
+      - glance
+      - cinder
+
+  - name: cinder has a working api
+    shell: . /root/stackrc; cinder list | grep ID
+    when: cinder.enabled|bool
+
+  - name: glance has the cirros image
+    shell: . /root/stackrc; openstack image list | grep cirros
+
+  - name: cirros image is public
+    shell: . /root/stackrc; openstack image show cirros |grep visibility |grep public
+
+  - name: nova has a working api
+    shell: . /root/stackrc; nova list | grep ID
+
+  - name: m1.tiny flavor has been embiggened
+    shell: mysql -e "select root_gb from nova_api.flavors where name='m1.tiny';" | grep 10

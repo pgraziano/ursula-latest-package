@@ -1,0 +1,8 @@
+---
+swift_account:
+  ip: "{{ primary_ip }}"
+  port: 6002
+  workers: "{{ swift.cluster.no_workers }}"
+  replicators: "{{ swift.cluster.no_replicators }}"
+  auditors: "{{ swift.cluster.no_auditors }}"
+  reapers: 1

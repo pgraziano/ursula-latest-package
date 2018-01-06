@@ -1,0 +1,11 @@
+---
+- name: restart swift-account-services
+  service:
+    name: "{{ item.name }}"
+    state: restarted
+  with_items:
+    - "{{ swift.services.swift_account }}"
+    - "{{ swift.services.swift_account_auditor }}"
+    - "{{ swift.services.swift_account_reaper }}"
+    - "{{ swift.services.swift_account_replicator }}"
+  when: start_account|bool

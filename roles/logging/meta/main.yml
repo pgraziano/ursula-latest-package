@@ -1,0 +1,11 @@
+---
+dependencies:
+  - role: repos
+    repos:
+      - repo: 'deb {{ apt_repos.elastic.repo }} stable main'
+        key_url: '{{ apt_repos.elastic.key_url }}'
+    when: ursula_os == 'ubuntu'
+  - role: sensu-check
+  - role: repos
+    repo: elastic
+    when: ursula_os == 'rhel'

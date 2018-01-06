@@ -1,0 +1,20 @@
+---
+part_power: 13
+replicas: 3
+min_part_hours: 1
+zones:
+  z1:
+    172.16.0.111:
+      disks:
+        - blockdev: vda1
+          weight: 1000
+  z2:
+    172.16.0.112:
+      disks:
+        - blockdev: vda1
+          weight: 1000
+  z3:
+    172.16.0.113:
+      disks:
+        - blockdev: vda1
+          weight: 1000

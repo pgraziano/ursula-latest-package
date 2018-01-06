@@ -1,0 +1,43 @@
+---
+- name: swift-account service scripts (ubuntu)
+  upstart_service:
+    name: "{{ item.name }}"
+    cmd:  "{{ item.cmd }}"
+    args: "{{ item.config_files }}"
+    user: "{{ item.user }}"
+  with_items:
+    - "{{ swift.services.swift_account }}"
+    - "{{ swift.services.swift_account_auditor }}"
+    - "{{ swift.services.swift_account_reaper }}"
+    - "{{ swift.services.swift_account_replicator }}"
+  when: ursula_os == 'ubuntu'
+
+- stat: path=/etc/swift/account.ring.gz
+  register: account_ring
+
+- set_fact: start_account={{ account_ring.stat.exists }}
+
+- name: account-server config
+  template: src=etc/swift/account-server.conf mode=0640
+            dest=/etc/swift/account-server.conf owner=swift group=swift
+  notify:
+    - restart swift-account-services
+
+- name: trigger restart on upgrades
+  debug:
+    msg: "Triggering service restart for upgrade"
+  changed_when: True
+  notify: restart swift-account-services
+  when: code_has_changed | default('False') | bool and
+        upgrade | default('False') | bool
+
+- meta: flush_handlers
+
+- name: start swift-account services
+  service: name={{ item.name }} state=started enabled=true
+  with_items:
+    - "{{ swift.services.swift_account }}"
+    - "{{ swift.services.swift_account_auditor }}"
+    - "{{ swift.services.swift_account_reaper }}"
+    - "{{ swift.services.swift_account_replicator }}"
+  when: start_account|bool

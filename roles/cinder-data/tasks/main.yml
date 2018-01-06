@@ -1,0 +1,116 @@
+---
+- name: install cinder-data required packages
+  package: name={{ item }}
+  with_items: "{{ cinder.data_pkgs[ursula_os] }}"
+  register: result
+  until: result|succeeded
+  retries: 5
+
+- include: lvm_integration.yml
+  when: lvm.enabled
+
+- include: ceph_integration.yml
+  when: ceph.enabled
+
+- name: persistent new backend
+  copy: dest=/etc/ansible/facts.d/persis_cinder_backend.fact
+        content={{ "{'lvm':%s,'ceph':%s}" % (lvm.enabled, ceph.enabled) }}
+  register: result_cinder_backend
+
+#When OS is Ubuntu
+- block:
+  - name: install cinder-volume service (ubuntu)
+    upstart_service:
+      name: "{{ item.name }}"
+      user: "{{ item.user }}"
+      cmd: "{{ item.cmd }}"
+      config_dirs: "{{ item.config_dirs }}"
+      limit_nofile: "16384 16384"
+    with_items:
+      - "{{ cinder.services.cinder_volume }}"
+    notify: restart cinder backup service
+
+  - name: install cinder backup service (ubuntu)
+    upstart_service:
+      name: "{{ item.name }}"
+      user: "{{ item.user }}"
+      cmd: "{{ item.cmd }}"
+      config_dirs: "{{ item.config_dirs }}"
+      limit_nofile: "16384 16384"
+    when: swift.enabled|default("false")|bool
+    notify: restart cinder backup service
+    with_items:
+      - "{{ cinder.services.cinder_backup }}"
+  when: ursula_os == 'ubuntu'
+
+
+#When OS is Rhel
+- block:
+  - name: install cinder-volume service (rhel)
+    systemd_service:
+      name: "{{ item.name }}"
+      description: "{{ item.desc }}"
+      type: "{{ item.type }}"
+      user: "{{ item.user }}"
+      cmd: "{{ item.cmd }}"
+      config_files: "{{ item.config_files }}"
+      restart: "{{ item.restart }}"
+      kill_mode: "{{ item.kill_mode }}"
+      limit_nofile: "16384"
+    with_items:
+      - "{{ cinder.services.cinder_volume }}"
+    notify: restart cinder services
+
+  - name: install cinder backup service (rhel)
+    systemd_service:
+      name: "{{ item.name }}"
+      description: "{{ item.desc }}"
+      type: "{{ item.type }}"
+      user: "{{ item.user }}"
+      cmd: "{{ item.cmd }}"
+      config_files: "{{ item.config_files }}"
+      restart: "{{ item.restart }}"
+      limit_nofile: "16384"
+    when: swift.enabled|default("false")|bool
+    with_items:
+      - "{{ cinder.services.cinder_backup }}"
+    notify: restart cinder backup service
+  when: ursula_os == 'rhel'
+
+- name: trigger restart on upgrades
+  debug:
+    msg: "Triggering service restart for upgrade"
+  changed_when: True
+  notify:
+    - restart cinder services
+    - restart cinder backup service
+  when: (code_has_changed | default('False') | bool and upgrade | default('False') | bool) or
+        (ceph.enabled and cephclient_upgraded|default(false)) or
+        result_cinder_backend.changed
+
+- meta: flush_handlers
+
+- name: start cinder-volume
+  service:
+    name: "{{ cinder.services.cinder_volume.name }}"
+    state: started
+    enabled: True
+  delegate_to: "{{ item }}"
+  run_once: True
+  with_items: "{{ play_hosts }}"
+
+- name: start cinder backup
+  service:
+    name: "{{ cinder.services.cinder_backup.name }}"
+    state: started
+    enabled: True
+  delegate_to: "{{ item }}"
+  run_once: True
+  when: swift.enabled|default("false")|bool
+  with_items: "{{ play_hosts }}"
+
+- include: monitoring.yml
+  when: monitoring.enabled|default('True')|bool
+  tags:
+    - monitoring
+    - common

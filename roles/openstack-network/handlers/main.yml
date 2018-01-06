@@ -1,0 +1,29 @@
+---
+- name: ifup neutron external interface
+  command: ifup {{ neutron_external_interface }}
+  ignore_errors: yes
+
+- name: enable ip forwarding
+  sysctl: name="net.ipv4.ip_forward" value=1 sysctl_set=yes state=present reload=yes
+
+- name: persist enable ipv4 masquerade
+  lineinfile:
+    dest: /etc/sysconfig/iptables
+    state: present
+    regexp: "-A POSTROUTING -o {{ item.interface }} -s {{ item.source }} ! -d {{ item.destination }} -j MASQUERADE"
+    insertafter: EOF
+    line: "*nat\n-A POSTROUTING -o {{ item.interface }} -s {{ item.source }} ! -d {{ item.destination }} -j MASQUERADE\nCOMMIT"
+    backup: yes
+  with_items:
+    - interface: eth0
+      source: 192.168.255.0/24
+      destination: 192.168.255.0/24
+  tags: firewall
+
+- name: enable ipv4 masquerade
+  command: "iptables -t nat -A POSTROUTING  -o {{ item.interface }} -s {{ item.source }} ! -d {{ item.destination }} -j MASQUERADE"
+  with_items:
+    - interface: eth0
+      source: 192.168.255.0/24
+      destination: 192.168.255.0/24
+  tags: firewall

@@ -1,0 +1,37 @@
+---
+- set_fact:
+    chrony_service_name: chrony
+  when: ursula_os == 'ubuntu'
+- set_fact:
+    chrony_service_name: chronyd
+  when: ursula_os == 'rhel'
+
+- name: install chrony (ubuntu)
+  apt:
+    pkg: chrony
+  when: ursula_os == 'ubuntu'
+
+- name: install chrony.conf
+  template:
+    dest: "{{ '/etc' if ursula_os == 'rhel' else '/etc/chrony' }}/chrony.conf"
+    src: etc/chrony.conf
+    mode: 0644
+    owner: root
+  notify:
+    - restart-chrony
+
+# chrony conflicts with the ntp package on ubuntu and is auto-removed
+- name: disable ntpd
+  service:
+    name: ntpd
+    state: stopped
+    enabled: false
+    must_exist: false
+  failed_when: false
+  when: ursula_os == 'rhel'
+
+- name: enable chrony
+  service:
+    name: "{{ chrony_service_name }}"
+    state: started
+    enabled: true

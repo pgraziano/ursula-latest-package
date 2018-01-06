@@ -1,0 +1,23 @@
+---
+- name: install serverspec and dependency gems
+  shell: GEM_PATH=/opt/sensu/embedded/lib/ruby/gems/2.0.0 /opt/sensu/embedded/bin/gem install {{ item.name }} -v {{ item.version }} --no-user-install
+  with_items: "{{ serverspec.gems }}"
+
+- name: ensure serverspec directory exists
+  file: dest=/etc/serverspec/spec/localhost state=directory
+        owner=root mode=0755 recurse=true
+
+- name: serverspec rakefile
+  template: src=etc/serverspec/Rakefile
+            dest=/etc/serverspec/Rakefile mode=0755
+
+- name: serverspec helper
+  template: src=etc/serverspec/spec/spec_helper.rb
+            dest=/etc/serverspec/spec/spec_helper.rb mode=0755
+
+- name: serverspec sensu hook
+  sensu_check: name=serverspec-check plugin=check-serverspec.rb
+               args='-d /etc/serverspec -s warning' use_sudo=true
+               interval={{ serverspec.interval }}
+  notify: restart sensu-client
+  when: serverspec.enabled|bool

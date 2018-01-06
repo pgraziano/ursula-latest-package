@@ -1,0 +1,83 @@
+---
+stack_env: ci-full-centos
+ursula_os: 'rhel'
+undercloud_cidr:
+  - cidr: 192.168.0.0/22
+state_path_base: /opt/stack/data
+
+etc_hosts:
+  - name: "{{ fqdn }}"
+    ip: "{{ floating_ip }}"
+
+neutron:
+  enable_external_interface: True
+  l3ha:
+    enabled: True
+    max_agents: 2
+    min_agents: 2
+    cidr: 169.254.192.0/18
+    password: "{{ secrets.service_password }}"
+    interval: 2
+  lbaas:
+    enabled: True
+
+keystone:
+  uwsgi:
+    method: port
+
+common:
+  hwraid:
+    enabled: False
+  selinux:
+    mode: permissive
+
+logging:
+  enabled: true
+  follow:
+    enabled: true
+    global_fields:
+      customer_id: "unknown"
+      cluster_name: "unknown"
+    logs:
+      - paths:
+          - /var/log/messages
+        fields:
+          type: syslog
+  forward:
+    host: 127.0.0.1
+
+inspec:
+  enabled: True
+
+xtradb:
+  galera_version: 3
+  client_version: 56
+  server_version: 56
+
+haproxy:
+  stats_group: root
+
+nova:
+  libvirt_type: kvm
+
+heat:
+  enabled: True
+
+ironic:
+  enabled: False
+
+glance:
+  store_smart: false
+  store_file: true
+
+cinder:
+  enabled: true
+
+lvm:
+  enabled: true
+
+# we don't enabled ceph server, but nova needs ceph client
+# so we specify ceph client version here
+ceph:
+  client_version:
+    rhel: 0.94.5

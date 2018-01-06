@@ -1,0 +1,37 @@
+---
+- name: check if already initiated
+  command: mongo -u admin -p {{ mongodb.db_password }} admin --host {{ mongodb.endpoint_addr }} --port {{ mongodb.port }} --eval 'rs.initiate()'
+  register: authenticate
+  ignore_errors: yes
+  changed_when: False
+  no_log: true
+
+- include: auth_initialization.yml
+  when: authenticate.rc != 0
+
+- name: make sure admin user has root role to manage cluster
+  mongodb_user:
+    login_user: admin
+    login_password:  "{{ mongodb.db_password }}"
+    login_port: "{{ mongodb.port }}"
+    database: admin
+    name: admin
+    password: "{{ mongodb.db_password }}"
+    replica_set: "{{ mongodb.replica_name }}"
+    roles: "userAdminAnyDatabase,clusterAdmin"
+    state: present
+  when: authenticate.rc == 0
+  no_log: True
+
+- name: make sure it's a member of replica_set(include rs.initate)
+  mongodb_replication:
+    login_host: "{{ mongodb.endpoint_addr }}"
+    login_port: "{{ mongodb.port }}"
+    login_user: "admin"
+    login_password: "{{ mongodb.db_password }}"
+    replica_set: "{{ mongodb.replica_name }}"
+    host_name: "{{ primary_ip }}"
+    host_port: "{{ mongodb.port }}"
+    host_type: "replica"
+    priority: 2.0
+  no_log: true

@@ -1,0 +1,21 @@
+---
+dependencies:
+  - role: endpoints
+  - role: monitoring-common
+    when: monitoring.enabled|default(True)|bool
+  - role: logging-config
+    when: logging.enabled|default(True)|bool
+    service: mongodb
+    logdata: "{{ mongodb.logs }}"
+  - role: inspec
+    install_inspec_controls: [mongodb]
+    tags: inspec
+    when:
+      - inspec.enabled|bool
+      - inspec.controls.mongodb.enabled|bool
+  - role: apt-repos
+    repos:
+      - repo: 'deb {{ apt_repos.mongodb.repo }} {{ ansible_distribution_release }}/mongodb-org/3.0 multiverse'
+        key_url: '{{ apt_repos.mongodb.key_url }}'
+        key_id: '7F0CEB10'
+        validate_certs: no

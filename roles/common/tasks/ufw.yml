@@ -1,0 +1,32 @@
+---
+- name: install ufw
+  apt: pkg=ufw
+  register: result
+  until: result|succeeded
+  retries: 5
+
+- name: permit ucarp (IP protocol 112)
+  lineinfile: dest=/etc/ufw/before.rules
+              regexp="^-A ufw-before-input -p 112 -j ACCEPT"
+              line="-A ufw-before-input -p 112 -j ACCEPT"
+              insertafter="^-A ufw-before-input -p udp --sport 67 --dport 68 -j ACCEPT"
+
+- name: Permit SSH
+  ufw: rule=allow to_port=22 proto=tcp src={{ item }}
+  with_items: "{{ common.ssh.allow_from }}"
+
+- name: Permit unrestricted access from remainder of cluster
+  ufw: rule=allow from_ip={{ item.cidr }} proto=any
+  with_items: "{{ undercloud_cidr }}"
+  when: undercloud_cidr is defined
+
+- name: Do not enforce forwarding rules with UFW
+  lineinfile: dest=/etc/default/ufw regexp="^DEFAULT_FORWARD_POLICY"
+              line="DEFAULT_FORWARD_POLICY=\"ACCEPT\""
+
+- name: change UFW's sysctl.conf directory
+  lineinfile: dest=/etc/default/ufw regexp="^IPT_SYSCTL"
+              line="IPT_SYSCTL=/etc/sysctl.conf"
+
+- name: Enable UFW (after configuring SSH access)
+  ufw: state=enabled

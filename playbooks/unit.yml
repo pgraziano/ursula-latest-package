@@ -1,0 +1,37 @@
+---
+- name: upgrade cinder control
+  hosts: controller-0
+  max_fail_percentage: 1
+
+  tasks:
+    - name: restart cinder-api service
+      service:
+        name: cinder-api
+        state: restarted
+
+    - name: discover nova-placement haproxy config entry
+      command: grep -q "^frontend placement" /etc/haproxy/haproxy.cfg
+      register: nova_placement
+      failed_when: false
+
+    - name: fixup cinder backend port in haproxy
+      replace:
+        dest: /etc/haproxy/haproxy.cfg
+        regexp: "8778 check maxconn"
+        replace: "{{ endpoints.cinder.port.backend_api }} check maxconn"
+        backup: yes
+      when: not nova_placement|succeeded
+
+    - name: reload haproxy service
+      service:
+        name: haproxy
+        state: reloaded
+
+    - name: enable cinder for haproxy
+      file:
+        path: /etc/cinder/healthcheck_disable
+        state: absent
+
+    - name: wait for haproxy to notice
+      pause:
+        seconds: 8

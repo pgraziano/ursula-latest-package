@@ -1,0 +1,40 @@
+---
+- name: remove overly greedy rabbit process check
+  sensu_process_check:
+    service: rabbitmq
+    state: absent
+  notify: restart sensu-client
+
+- name: rabbit server process check
+  sensu_process_check:
+    service: "{{ ( ursula_os == 'ubuntu' )| ternary('rabbitmq-server', 'beam.smp') }}"
+  notify: restart sensu-client
+
+- name: rabbit cluster check
+  sensu_check: name=rabbitmq-cluster plugin=check-rabbitmq-cluster.rb
+               args="--expected 2 --criticality {{ rabbitmq.monitoring.sensu_checks.rabbitmq_cluster.criticality }}" use_sudo=true
+  notify: restart sensu-client
+  when: rabbitmq.cluster
+
+- name: rabbit queues check
+  sensu_check: name=rabbitmq-queues plugin=check-rabbitmq-queues.rb
+               args="--timeout {{ rabbitmq.monitoring.sensu_checks.timeout|int }}"
+               use_sudo=true
+  notify: restart sensu-client
+
+- name: set cluster count fact
+  set_fact: cluster_node_count={{ groups['all'] | count }}
+
+- name: rabbit queue num check
+  sensu_check: name=rabbitmq-numqueues plugin=check-rabbitmq-queues.rb
+               args="-t number -w {{ cluster_node_count|int * rabbitmq.numqueues_warning_multiplier|int }}
+                     -c {{ cluster_node_count|int * rabbitmq.numqueues_critical_multiplier|int }}
+                     --timeout {{ rabbitmq.monitoring.sensu_checks.timeout|int }}"
+               use_sudo=true
+  notify: restart sensu-client
+
+- name: rabbit metrics
+  template: src=etc/collectd/plugins/rabbitmq.conf dest=/etc/collectd/plugins/rabbitmq.conf
+  notify: restart collectd
+  when: collectd is defined and collectd.enabled|bool
+  tags: collectd

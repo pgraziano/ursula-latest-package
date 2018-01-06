@@ -1,0 +1,3 @@
+swiftops ALL= NOPASSWD: {{ ( ursula_os == 'rhel' ) | ternary('/','/usr/local/') }}bin/swifttool
+swiftops ALL= NOPASSWD: {{ ( ursula_os == 'rhel' ) | ternary('/sbin/','/usr/bin/') }}lshw
+swiftops ALL= NOPASSWD: {{ ( ursula_os == 'rhel' ) | ternary('/','/usr/local/') }}bin/swift-init

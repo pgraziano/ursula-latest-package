@@ -1,0 +1,22 @@
+---
+- set_fact:
+    garbd_service: garbd
+  when: ursula_os == 'ubuntu'
+- set_fact:
+    garbd_service: garb
+  when: ursula_os == 'rhel'
+
+- name: install python-pycurl
+  package:
+    name: python-pycurl
+  register: result
+  until: result|succeeded
+  retries: 5
+
+# this is needed so that mysql when run by
+# systemd can execute the wsrep commands
+- name: set selinux permissive for mysql
+  selinux_permissive:
+    name: mysqld_t
+    permissive: true
+  when: ursula_os == 'rhel'

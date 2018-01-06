@@ -1,0 +1,12 @@
+---
+- name: set up log rotation for mongodb
+  logrotate: name=mongodb path=/var/log/mongodb/*.log
+  args:
+    options:
+      - daily
+      - missingok
+      - rotate 7
+      - compress
+      - notifempty
+      - delaycompress
+      - copytruncate

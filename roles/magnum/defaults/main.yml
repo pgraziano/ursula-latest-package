@@ -1,0 +1,38 @@
+---
+magnum:
+  port: 9512
+  host: 127.0.0.1
+  heartbeat_timeout_threshold: 30
+  distro:
+    project_packages:
+      - openstack-magnum
+  source:
+    rev: newton-eol
+    upper_constraints: '{{ openstack_meta.upper_constraints }}'
+    virtualenv: "/opt/openstack/magnum"
+    python_dependencies:
+      - { name: PyMySQL }
+    system_dependencies:
+      ubuntu: []
+      rhel: []
+  package: ~
+  cafile: "{{ ssl.cafile }}"
+  logs:
+    - paths:
+      - /var/log/magnum/magnum-api.log
+      fields:
+        type: openstack
+        tags: magnum,api,api
+    - paths:
+      - /var/log/magnum/magnum-conductor.log
+      fields:
+        type: openstack
+        tags: magnum,conductor
+  logging:
+    debug: False
+    verbose: True
+  alternatives:
+    - magnum-api
+    - magnum-conductor
+    - magnum-db-manage
+    - magnum-template-manage

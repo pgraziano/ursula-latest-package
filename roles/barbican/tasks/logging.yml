@@ -1,0 +1,12 @@
+---
+- name: set up log rotation for barbican
+  logrotate: name=barbican path=/var/log/barbican/*.log
+  args:
+    options:
+      - daily
+      - rotate 7
+      - missingok
+      - compress
+      - minsize 100k
+      - copytruncate
+  when: openstack_install_method != 'distro'

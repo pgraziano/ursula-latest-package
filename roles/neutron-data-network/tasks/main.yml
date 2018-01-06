@@ -1,0 +1,227 @@
+---
+- name: install neutron-data-network packages
+  package: name={{ item }}
+  with_items:
+    - dnsmasq
+    - dnsmasq-utils
+    - ucarp
+    - radvd
+  register: result
+  until: result|succeeded
+  retries: 5
+
+- name: install packages for l3ha
+  package: name=keepalived
+  when: neutron.l3ha.enabled|bool
+  register: result
+  until: result|succeeded
+  retries: 5
+
+- name: remove conntrackd
+  package: name=conntrackd state=absent
+  register: result
+  until: result|succeeded
+  retries: 5
+
+- include: dnsmasq.yml
+
+- include: igmp-router.yml
+  when: ursula_os == 'ubuntu' and (
+        neutron.plugin == 'ml2' and
+        'vxlan' in neutron.tunnel_types
+        and not neutron.l2_population )
+
+- name: assert kernel supports vxlan
+  command: modinfo -F version vxlan
+  changed_when: false
+  when: "'vxlan' in neutron.tunnel_types"
+
+- name: assert iproute2 supports vxlan
+  command: ip link add type vxlan help
+  register: iproute_out
+  changed_when: false
+  failed_when: iproute_out.rc == 255
+  when: "'vxlan' in neutron.tunnel_types"
+
+- block:
+  - name: install neutron-data-network services (ubuntu)
+    upstart_service:
+      name: "{{ item.name }}"
+      start_on: "{{ item.start_on|default(omit) }}"
+      stop_on: "{{ item.stop_on|default(omit) }}"
+      user: "{{ item.user }}"
+      envs: "{{ item.envs }}"
+      pidfile: "{{ item.pidfile|default(omit) }}"
+      cmd: "{{ item.cmd }}"
+      config_dirs: "{{ item.config_dirs }}"
+      config_files: "{{ item.config_files|default(omit) }}"
+    with_items:
+      - "{{ neutron.services.neutron_dhcp_agent }}"
+      - "{{ neutron.services.neutron_l3_agent }}"
+      - "{{ neutron.services.neutron_metadata_agent }}"
+
+  - name: install neutron lbaas service (ubuntu)
+    upstart_service:
+      name: "{{ item.name }}"
+      start_on: "{{ item.start_on|default(omit) }}"
+      stop_on: "{{ item.stop_on|default(omit) }}"
+      user: "{{ item.user }}"
+      pidfile: "{{ item.pidfile|default(omit) }}"
+      cmd: "{{ item.cmd }}"
+      config_dirs: "{{ item.config_dirs }}"
+      config_files: "{{ item.config_files|default(omit) }}"
+      envs: "{{ item.envs }}"
+    when: ((neutron.lbaas.enabled == "smart" and
+           groups['controller'][0] not in groups['compute']) or
+           neutron.lbaas.enabled|bool)
+    with_items:
+      - "{{ neutron.services.neutron_lbaasv2_agent }}"
+  when: ursula_os == 'ubuntu'
+
+- block:
+  - name: install neutron-data-network services (rhel)
+    systemd_service:
+      name: "{{ item.name }}"
+      description: "{{ item.desc }}"
+      type: "{{ item.type }}"
+      user: "{{ item.user }}"
+      environments: "{{ item.environments }}"
+      cmd: "{{ item.cmd }}"
+      config_dirs: "{{ item.config_dirs }}"
+      config_files: "{{ item.config_files }}"
+      pidfile: "{{ item.pidfile|default(omit) }}"
+      restart: "{{ item.restart }}"
+      kill_mode: "{{ item.kill_mode }}"
+    with_items:
+      - "{{ neutron.services.neutron_dhcp_agent }}"
+      - "{{ neutron.services.neutron_l3_agent }}"
+      - "{{ neutron.services.neutron_metadata_agent }}"
+
+  - name: install neutron lbaas service (rhel)
+    systemd_service:
+      name: "{{ item.name }}"
+      description: "{{ item.desc }}"
+      type: "{{ item.type }}"
+      user: "{{ item.user }}"
+      environments: "{{ item.environments }}"
+      cmd: "{{ item.cmd }}"
+      config_dirs: "{{ item.config_dirs }}"
+      config_files: "{{ item.config_files }}"
+      pidfile: "{{ item.pidfile|default(omit) }}"
+      restart: "{{ item.restart }}"
+      kill_mode: "{{ item.kill_mode }}"
+    when: ((neutron.lbaas.enabled == "smart" and
+           groups['controller'][0] not in groups['compute']) or
+           neutron.lbaas.enabled|bool)
+    with_items:
+      - "{{ neutron.services.neutron_lbaasv2_agent }}"
+  when: ursula_os == 'rhel'
+
+- name: create lbaas templates folder
+  file:
+    path: "/etc/neutron/lbaas_templates/"
+    state: directory
+    owner: root
+    group: neutron
+    mode: 0755
+
+- name: template neutron lbaas haproxy
+  template:
+    src: etc/neutron/lbaas_templates/haproxy_base.j2
+    dest: /etc/neutron/lbaas_templates/haproxy_base.j2
+    owner: root
+    group: neutron
+    mode: 0644
+  notify: restart neutron lbaas agent
+  when: (neutron.lbaas.enabled == "smart" and
+         groups['controller'][0] not in groups['compute']) or
+         neutron.lbaas.enabled|bool
+
+- name: symlink other neutron lbaas haproxy templates
+  file:
+    src: /opt/openstack/current/neutron/lib/python2.7/site-packages/neutron_lbaas/drivers/haproxy/templates/{{ item }}
+    dest: /etc/neutron/lbaas_templates/{{ item }}
+    owner: root
+    group: neutron
+    state: link
+    force: true
+  with_items:
+    - haproxy.loadbalancer.j2
+    - haproxy_proxies.j2
+  notify: restart neutron lbaas agent
+  when:
+    - openstack_install_method != 'distro'
+    - (neutron.lbaas.enabled == "smart" and groups['controller'][0] not in groups['compute']) or neutron.lbaas.enabled|bool
+
+- name: symlink other neutron lbaas haproxy templates (distro)
+  file:
+    src: /usr/lib/python2.7/site-packages/neutron_lbaas/drivers/haproxy/templates/{{ item }}
+    dest: /etc/neutron/lbaas_templates/{{ item }}
+    owner: root
+    group: neutron
+    state: link
+    force: true
+  with_items:
+    - haproxy.loadbalancer.j2
+    - haproxy_proxies.j2
+  notify: restart neutron lbaas agent
+  when:
+    - openstack_install_method == 'distro'
+    - (neutron.lbaas.enabled == "smart" and groups['controller'][0] not in groups['compute']) or neutron.lbaas.enabled|bool
+
+- name: neutron lbaas agent config
+  template:
+    src: etc/neutron/services/loadbalancer/haproxy/lbaas_agent.ini
+    dest: /etc/neutron/services/loadbalancer/haproxy
+    mode: 0644
+  when: (neutron.lbaas.enabled == "smart" and
+         groups['controller'][0] not in groups['compute']) or
+         neutron.lbaas.enabled|bool
+  notify:
+    - restart neutron lbaas agent
+
+- name: kill namespaced neutron processes on upgrade
+  command: pkill -f {{ item }}
+  failed_when: False
+  when: code_has_changed | default('False') | bool and
+        upgrade | default('False') | bool
+  with_items:
+    - neutron-keepalived-state-change
+    - neutron-ns-metadata-proxy
+
+- name: trigger restart on upgrades
+  debug:
+    msg: "Triggering service restart for upgrade"
+  changed_when: True
+  notify: restart neutron services
+  when: code_has_changed | default('False') | bool and
+        upgrade | default('False') | bool
+
+- meta: flush_handlers
+
+- name: start neutron-data-network services
+  service:
+    name: "{{ item.name }}"
+    state: started
+    enabled: True
+  with_items:
+    - "{{ neutron.services.neutron_l3_agent }}"
+    - "{{ neutron.services.neutron_dhcp_agent }}"
+    - "{{ neutron.services.neutron_metadata_agent }}"
+
+- name: start neutron lbaas agent
+  service:
+    name: "{{ neutron.services.neutron_lbaasv2_agent.name }}"
+    state: started
+    enabled: True
+  when: (neutron.lbaas.enabled == "smart" and
+         groups['controller'][0] not in groups['compute']) or
+         neutron.lbaas.enabled|bool
+
+- include: ipchanged.yml
+
+- include: monitoring.yml
+  tags:
+    - monitoring
+    - common
+  when: monitoring.enabled|default('True')|bool

@@ -1,0 +1,68 @@
+---
+project_name: heat
+heat:
+  enabled: True
+  heartbeat_timeout_threshold: 30
+  convergence_engine: False
+  services:
+    heat_api: "{{ openstack_meta.heat.services.heat_api[ursula_os] }}"
+    heat_api_cfn: "{{ openstack_meta.heat.services.heat_api_cfn[ursula_os] }}"
+    heat_engine: "{{ openstack_meta.heat.services.heat_engine[ursula_os] }}"
+  distro:
+    project_packages:
+      - openstack-selinux
+      - openstack-heat-api
+      - openstack-heat-api-cfn
+      - openstack-heat-engine
+    # Example for distro/source:
+    # python_post_dependencies:
+    #   - name: ibm-sw-orch
+    #     version: 6.2.3.dev135
+    #     pip_extra_args: '--extra-index-url https://pypi-mirror.openstack.blueboxgrid.com/root/pypi...'
+    python_post_dependencies: []
+  source:
+    rev: newton-eol
+    upper_constraints: '{{ openstack_meta.upper_constraints }}'
+    python_dependencies:
+      - { name: PyMySQL }
+    python_post_dependencies: []
+    system_dependencies:
+      ubuntu: []
+      rhel: []
+  alternatives:
+    - heat-api
+    - heat-api-cfn
+    - heat-api-cloudwatch
+    - heat-db-setup
+    - heat-engine
+    - heat-manage
+  logs:
+    - paths:
+        - /var/log/heat/heat-api.log
+      fields:
+        type: openstack
+        tags: heat,heat-api
+    - paths:
+        - /var/log/heat/heat-engine.log
+      fields:
+        type: openstack
+        tags: heat,heat-engine
+    - paths:
+        - /var/log/heat/heat-manage.log
+      fields:
+        type: openstack
+        tags: heat,heat-manage
+  logging:
+    debug: False
+    verbose: True
+  cafile: "{{ ssl.cafile }}"
+  plugin_dirs: []
+  engine_workers: 4
+  api_workers: 5
+  monitoring:
+    sensu_checks:
+      check_heat_api:
+        criticality: 'critical'
+  auditing:
+    enabled: False
+    logging: False

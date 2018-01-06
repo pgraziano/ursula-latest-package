@@ -1,0 +1,11 @@
+---
+- name: create backup directory
+  file: path=/backup/percona state=directory mode=0755
+
+- name: add percona-xtrabackup.sh to cron.daily
+  template: src=percona-xtrabackup.sh dest=/etc/cron.daily/percona-xtrabackup owner=root group=root mode=0755
+
+- include: monitoring.yml
+  tags:
+    - monitoring
+  when: monitoring.enabled|default('True')|bool

@@ -1,0 +1,110 @@
+---
+- name: check if cinder user exists
+  shell: getent passwd cinder
+  register: cinder_user
+  failed_when: False
+  changed_when: False
+
+- name: cinder user
+  user: name=cinder shell=/bin/false createhome=no
+  when: cinder_user|success
+
+- name: cinder user
+  user: name=cinder comment=cinder shell=/bin/false system=yes
+        home=/nonexistent createhome=no
+  when: not cinder_user|success
+
+- name: /etc/cinder
+  file: dest=/etc/cinder state=directory
+
+- name: cinder image dir (and leading paths)
+  file: dest={{ cinder.state_path }}/images state=directory owner=cinder group=cinder
+
+- name: cinder private dirs
+  file:
+    dest: "{{ item }}"
+    state: directory
+    mode: 0700
+    owner: cinder
+    group: cinder
+  with_items:
+    - /var/cache/cinder
+
+- name: create shared lock path for nova and cinder
+  file:
+    dest: "{{ state_path_base }}/sharedlock"
+    state: directory
+    mode: 0770
+    owner: root
+    group: root
+
+- name: set acls on shared path
+  acl:
+    name: "{{ state_path_base }}/sharedlock"
+    entity: cinder
+    etype: user
+    permissions: rwx
+    state: present
+
+- name: cinder log dir
+  file: dest=/var/log/cinder state=directory mode=2750 owner=cinder group=adm
+
+- name: Change cinder log dir acl
+  acl: name=/var/log/cinder state=present default=yes etype={{ item.etype }} permissions={{ item.permission }}
+  with_items:
+    - etype: user
+      permission: rw
+    - etype: group
+      permission: r
+    - etype: other
+      permission: r
+
+- name: error out when swift haproxy vip is not updated
+  fail: msg="swift haproxy vip needs to be updated for use with cinder backup"
+  when: swift.enabled|bool and (endpoints.swift.haproxy_vip == fqdn)
+
+# used in cinder.conf
+- name: fetch contents of uuid file
+  slurp: path=/etc/ceph/cinder_uuid
+  run_once: true
+  delegate_to: "{{ groups['ceph_monitors'][0] }}"
+  register: cinder_uuid_file
+  when: ceph.enabled
+
+- name: cinder config
+  template: src={{ item }} dest=/etc/cinder mode=0640
+            owner=root group=cinder
+  with_fileglob: ../templates/etc/cinder/*
+  notify:
+    - restart cinder services
+    - restart cinder backup service
+
+- name: copy policy files to openstack-dashboard
+  template:
+    src: "etc/cinder/policy.json"
+    dest: "/etc/openstack-dashboard/cinder_policy.json"
+    owner: "root"
+    group: "{{ openstack_meta.apache[ursula_os].group }}"
+    mode: 0640
+  when: inventory_hostname in groups['controller']
+
+- name: cinder sudoer
+  template: src=etc/sudoers.d/cinder dest=/etc/sudoers.d/cinder owner=root
+            group=root mode=0440
+
+- name: enable cinder encryption for barbican
+  template: src=etc/cinder/cinder.encryption.conf
+            dest=/etc/cinder/cinder.encryption.conf mode=0640
+            owner=root group=cinder
+  notify: restart cinder services
+  when: cinder.encryption.enabled|bool
+
+- name: disable cinder encryption for barbican
+  file: dest=/etc/cinder/cinder.encryption.conf state=absent
+  notify: restart cinder services
+  when: not cinder.encryption.enabled|bool
+
+- include: logging.yml
+  tags:
+    - logrotate
+    - logging

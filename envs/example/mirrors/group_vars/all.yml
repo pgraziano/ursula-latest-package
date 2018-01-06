@@ -1,0 +1,79 @@
+---
+stack_env: example_mirrors
+floating_ip: 172.16.0.100
+
+xtradb:
+  sst_auth_password: asdf
+
+percona:
+  replication: False
+
+nova:
+  novnc_method: file
+  novnc_url: https://file-mirror.openstack.blueboxgrid.com/novnc/novnc-0.5.1.tar.gz
+
+apt_repos:
+  docker:
+    repo: https://apt-mirror.openstack.blueboxgrid.com/docker/ubuntu
+    key_url: https://apt-mirror.openstack.blueboxgrid.com/keys/docker.key
+  blueboxcloud_giftwrap:
+    repo: https://apt-mirror.openstack.blueboxgrid.com/blueboxcloud_giftwrap/blueboxcloud/giftwrap/ubuntu
+    key_url: https://apt-mirror.openstack.blueboxgrid.com/keys/blueboxcloud_giftwrap.key
+  hwraid:
+    repo: https://apt-mirror.openstack.blueboxgrid.com/hwraid/ubuntu
+    key_url: https://apt-mirror.openstack.blueboxgrid.com/keys/hwraid.key
+  sensu:
+    repo: https://apt-mirror.openstack.blueboxgrid.com/sensu/apt
+    key_url: https://apt-mirror.openstack.blueboxgrid.com/keys/sensu.key
+  haproxy:
+    repo: https://apt-mirror.openstack.blueboxgrid.com/haproxy/vbernat/haproxy-1.5/ubuntu
+    key_url: https://apt-mirror.openstack.blueboxgrid.com/keys/haproxy.key
+  bbg_openstack_ppa:
+    repo: https://apt-mirror.openstack.blueboxgrid.com/bbg_openstack_ppa/blueboxgroup/openstack/ubuntu
+    key_url: https://apt-mirror.openstack.blueboxgrid.com/keys/bbg_openstack_ppa.key
+  percona:
+    repo: https://apt-mirror.openstack.blueboxgrid.com/percona/apt
+    key_url: https://apt-mirror.openstack.blueboxgrid.com/keys/percona.key
+  rabbitmq:
+    repo: https://apt-mirror.openstack.blueboxgrid.com/rabbitmq/debian
+    key_url: https://apt-mirror.openstack.blueboxgrid.com/keys/rabbitmq.key
+  cloud_archive:
+    repo: https://apt-mirror.openstack.blueboxgrid.com/cloud_archive/ubuntu
+  erlang:
+    repo: https://apt-mirror.openstack.blueboxgrid.com/erlang/debian
+    key_url: https://apt-mirror.openstack.blueboxgrid.com/keys/erlang.key
+  ceph:
+    repo: https://apt-mirror.openstack.blueboxgrid.com/ceph/debian-
+    key_url: https://apt-mirror.openstack.blueboxgrid.com/keys/ceph.key
+
+openstack:
+  pypi_mirror: https://pypi-mirror.openstack.blueboxgrid.com/root/pypi
+  easy_install_mirror: https://pypi-mirror.openstack.blueboxgrid.com/root/pypi/+simple
+  gem_sources:
+    - https://gem-mirror.openstack.blueboxgrid.com
+  ubuntu_mirror: https://apt-mirror.openstack.blueboxgrid.com/trusty/ubuntu
+
+logging:
+  download:
+    url: https://file-mirror.openstack.blueboxgrid.com/logstash/logstash-forwarder_0.3.1_amd64.deb
+
+horizon:
+  logo_url: https://file-mirror.openstack.blueboxgrid.com/horizon-branding/bluebox-u1.1.x.png
+  favicon_url: https://file-mirror.openstack.blueboxgrid.com/horizon-branding/bluebox.ico
+
+glance:
+  images:
+    - name: cirros
+      url: https://file-mirror.openstack.blueboxgrid.com/cloud-images/cirros-0.3.3-x86_64-disk.img
+
+common:
+  ursula_monitoring:
+    path: /opt/ursula-monitoring
+    method: tar # git|tar
+    tar_url: https://file-mirror.openstack.blueboxgrid.com/ursula-monitoring/RELEASE-1.3.x.tar.gz
+    tar_version: RELEASE-1.3.x
+
+#env_vars:
+#  http_proxy: http://172.16.1.115:3128
+#  https_proxy: http://172.16.1.115:3128
+#  no_proxy: localhost,127.0.0.0/8,10.0.0.0/8,192.168.0.0/16,{{ fqdn }},172.16.0.100

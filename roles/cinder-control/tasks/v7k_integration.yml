@@ -1,0 +1,10 @@
+---
+- name: create v7k sshkey directory
+  file: dest=/etc/cinder/v7k/ssh/cinder state=directory owner=cinder
+        group=cinder mode=0755
+
+- name: drop a cinder private key
+  template: src=etc/v7k/ssh/cinder/id_rsa
+            dest=/etc/cinder/v7k/ssh/cinder/id_rsa owner=cinder
+            group=cinder mode=0600
+

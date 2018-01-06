@@ -1,0 +1,66 @@
+---
+project_name: barbican
+barbican_keystone_auth: yes
+barbican:
+  enabled: False
+  admin_workers: 1
+  public_workers: 1
+  admin_project_name: admin
+  admin_project_domain_name: Default
+  roles:
+    - creator
+    - observer
+    - audit
+  uwsgi:
+    method: port
+    home:
+      distro: /usr/lib/python2.7/site-packages/barbican
+      source: /opt/openstack/current/barbican
+      package: /opt/openstack/current/barbican
+  services:
+    barbican_api: "{{ openstack_meta.barbican.services.barbican_api[ursula_os] }}"
+  state_path: "{{ state_path_base }}/barbican"
+  distro:
+    project_packages:
+      - openstack-barbican
+    python_post_dependencies: []
+  source:
+    rev: newton-eol
+    upper_constraints: '{{ openstack_meta.upper_constraints }}'
+    python_dependencies:
+        - { name: PyMySQL }
+        - { name: python-memcached }
+        - { name: uwsgi }
+    python_post_dependencies: []
+    system_dependencies:
+      ubuntu: []
+      rhel: []
+  alternatives:
+    - barbican-manage
+  logging:
+    debug: False
+    verbose: True
+  cafile: "{{ ssl.cafile }}"
+  auditing:
+    enabled: False
+    logging: False
+  monitoring:
+    sensu_checks:
+      check_barbican_api:
+        criticality: 'critical'
+  logs:
+    - paths:
+      - /var/log/barbican/api.log
+      fields:
+        type: openstack
+        tags: barbican,barbican-api
+  backlog: 4096
+  max_allowed_secret_in_bytes: 10000
+  max_allowed_request_size_in_bytes: 1000000
+  sql_idle_timeout: 3600
+  default_limit_paging: 10
+  max_limit_paging: 100
+  asynchronous_workers: 1
+  initial_delay_seconds: 10.0
+  periodic_interval_max_seconds: 10.0
+  thread_pool_size: 10

@@ -1,0 +1,54 @@
+---
+- include: all.yml
+
+- include: controller.yml
+
+- include: network.yml
+
+- include: ceph.yml
+  when: ceph.enabled|default('False')|bool
+
+- include: swift.yml
+  when: swift.enabled|default('False')|bool
+
+- include: lbaas.yml
+  when: neutron.lbaas.enabled|default('False')|bool
+
+- name: Begin intergration test
+  hosts: controller[0]
+  tasks:
+  - name: Find host hosting default router
+    shell: . /root/stackrc; neutron l3-agent-list-hosting-router default | grep " active "
+    register: host_result
+
+  - set_fact:
+      host_hosting_default_router: "{{ item }}"
+    when: item in host_result.stdout
+    with_items: "{{ groups['controller'] }}"
+
+  - name: Find host in host backup default router
+    shell: . /root/stackrc; neutron l3-agent-list-hosting-router default | grep " standby "
+    register: backup_host_result
+
+  - set_fact:
+      host_backup_default_router: "{{ item }}"
+    when: item in backup_host_result.stdout
+    with_items: "{{ groups['controller'] }}"
+
+  - include: workaround_network.yml
+    delegate_to: "{{ host_backup_default_router }}"
+
+  - include: integration.yml
+    delegate_to: "{{ host_hosting_default_router }}"
+
+- include: ironic.yml
+  when: ironic.enabled|default('False')|bool
+
+- include: ceilometer.yml
+  when: ceilometer.enabled|default('False')|bool
+
+- include: aodh.yml
+  when: aodh.enabled|default('False')|bool
+
+- include: barbican.yml
+  when: barbican.enabled|default('False')|bool

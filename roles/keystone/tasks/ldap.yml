@@ -1,0 +1,8 @@
+---
+- name: keystone domain specific conf dir
+  file: dest=/etc/keystone/domains state=directory
+
+- name: keystone ldap domain conf file
+  template: src="etc/keystone/domains/keystone.domain.conf"
+            dest="/etc/keystone/domains/keystone.{{ keystone.ldap_domain.domain }}.conf"
+  notify: restart keystone services

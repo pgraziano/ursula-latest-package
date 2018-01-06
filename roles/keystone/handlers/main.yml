@@ -1,0 +1,15 @@
+---
+# Restart serially as to not take keystone completely offline
+- name: restart keystone services
+  service:
+    name: "{{ openstack_meta.keystone.services.keystone_api[ursula_os].name }}"
+    state: restarted
+    must_exist: false
+  run_once: True
+  delegate_to: "{{ item }}"
+  when: restart|default(True)
+  with_items: play_hosts
+
+- name: restart shibboleth
+  service: name=shibd state=restarted
+  when: restart|default(True)

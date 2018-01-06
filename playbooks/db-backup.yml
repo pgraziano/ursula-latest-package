@@ -1,0 +1,11 @@
+---
+- hosts: controller[0]
+  tasks:
+    - name: get time string
+      shell: date "+%Y-%m-%d-%H:%M:%S"
+      register: time_str
+
+    - file: dest=/root/db-backups state=directory owner=root mode=0644
+
+    - name: run the backup
+      mysql_db: state=dump name=all target=/root/db-backups/{{ time_str.stdout }}.sql

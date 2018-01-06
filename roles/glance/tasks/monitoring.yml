@@ -1,0 +1,42 @@
+---
+- name: glance process check installation
+  sensu_process_check: service={{ item }}
+  with_items:
+    - glance-api
+    - glance-registry
+  notify: restart sensu-client
+  
+- name: glance-api check
+  sensu_check: name=check-glance-api plugin=check-os-api.rb
+               args="--service glance --criticality {{ glance.monitoring.sensu_checks.check_glance_api.criticality }}"
+               only_on_ip="{{ undercloud_floating_ip | default(floating_ip) }}"
+  notify: restart sensu-client
+
+- name: install functools32 for glance-store check
+  pip:
+    name: functools32
+    state: present
+  register: result
+  until: result|succeeded
+  retries: 5
+
+- name: glance-store check
+  sensu_check:
+    name: check-glance-store
+    plugin: check-glance-store.py
+    args: "--imagedir={{ glance.sync.dir }} --criticality {{ glance.monitoring.sensu_checks.check_glance_store.criticality }}"
+  when: (glance.store_smart|bool and not swift.enabled|bool and not ceph.enabled) or
+        (not glance.store_swift|bool and not glance.store_ceph and glance.store_file|bool)
+  notify: restart sensu-client
+
+- name: glance metrics
+  template: src=etc/collectd/plugins/glance.conf dest=/etc/collectd/plugins/glance.conf
+  notify: restart collectd
+  when: collectd is defined and collectd.enabled|bool
+  tags: collectd
+
+- name: glance sla metrics
+  sensu_metrics_check: name=glance-sla-metrics plugin=metrics-os-api.py
+                       args='-S glance --scheme {{ monitoring.graphite.cluster_prefix }}'
+                       only_on_ip="{{ undercloud_floating_ip | default(floating_ip) }}"
+  notify: restart sensu-client

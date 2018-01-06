@@ -1,0 +1,7 @@
+---
+dependencies:
+  - role: ceilometer-common
+  - role: openstack-firewall
+    rule_name: ceilometer
+    rules_type_input:
+      - { protocol: tcp, port: "{{ endpoints.ceilometer.port.haproxy_api }}" }

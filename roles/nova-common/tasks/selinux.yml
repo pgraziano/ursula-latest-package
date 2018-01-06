@@ -1,0 +1,30 @@
+---
+- name: set selinux label on the nova state directory
+  sefcontext:
+    target: "{{ nova.state_path }}(/.*)?"
+    setype: nova_var_lib_t
+    state: present
+
+- name: set selinux label on the sharedlock directory
+  sefcontext:
+    target: "{{ state_path_base }}/sharedlock(/.*)?"
+    setype: nova_var_lib_t
+    state: present
+
+- name: apply the fcontext immediately to {{ state_path_base }}
+  command: restorecon -R -v "{{ state_path_base }}"
+  register: result
+  changed_when: "'restorecon reset' in result.stdout and result.rc == 0"
+  failed_when: "result.rc != 0"
+
+- name: set selinux label on nova cache  dir
+  sefcontext:
+    target: "/var/cache/nova(/.*)?"
+    setype: nova_var_run_t
+    state: present
+
+- name: apply the fcontext immediately to nova cache dir
+  command: restorecon -R -v /var/cache/nova
+  register: result
+  changed_when: "'restorecon reset' in result.stdout and result.rc == 0"
+  failed_when: "result.rc != 0"

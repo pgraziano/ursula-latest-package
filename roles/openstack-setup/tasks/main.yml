@@ -1,0 +1,23 @@
+---
+- include: users.yml
+  when: openstack_setup.add_users|bool or openstack_setup.add_users is undefined
+
+- include: images.yml
+  when: openstack_setup.add_images|bool or openstack_setup.add_images is undefined
+
+- include: networks.yml
+  when: openstack_setup.add_networks|bool or openstack_setup.add_networks is undefined
+
+- include: cinder.yml
+  when: cinder.enabled|default('True')|bool
+  tags: cinder
+
+- include: flavors.yml
+
+- include: computes.yml
+  tags: hostagg
+ 
+- include: dispersion.yml
+  when: (services_setup.changed or upgrade|default('False')|bool) and
+         swift.enabled|default('False')|bool
+

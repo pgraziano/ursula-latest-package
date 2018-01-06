@@ -1,0 +1,8 @@
+#!/bin/bash
+
+service {{ neutron.services.neutron_server.name }} stop
+service {{ neutron.services.neutron_linuxbridge_agent.name }} stop
+service {{ neutron.services.neutron_metadata_agent.name }} stop
+
+# neutron-dhcp-agent and neutron-l3-agent will be stopped
+# when neutron-linuxbridge-agent is stopped due to service deps

@@ -1,0 +1,7 @@
+---
+- name: refresh cert auths
+  command: update-ca-certificates
+  when: ansible_distribution == 'Ubuntu'
+
+- name: restart rsyslog
+  service: name=rsyslog state=restarted

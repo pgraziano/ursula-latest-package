@@ -1,0 +1,5 @@
+#!/bin/sh
+
+echo
+echo "WARNING Swift node -- do not replace disks without consulting Swift specific procedures"
+echo

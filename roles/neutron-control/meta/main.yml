@@ -1,0 +1,18 @@
+---
+dependencies:
+  - role: openstack-database
+    database_name: neutron
+  - role: inspec
+    install_inspec_controls: [neutron_control]
+    tags: inspec
+    when:
+      - inspec.enabled|bool
+      - inspec.controls.neutron_control.enabled|bool
+  - role: neutron-common
+  - role: sensu-check
+  - role: collectd-plugin
+    when: collectd is defined and collectd.enabled|bool
+  - role: openstack-firewall
+    rule_name: neutron
+    rules_type_input:
+      - { protocol: tcp, port: "{{ endpoints.neutron.port.haproxy_api }}" }

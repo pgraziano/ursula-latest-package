@@ -1,0 +1,77 @@
+---
+- block:
+  - name: install mod_auth_openidc deps
+    apt: name={{ item }} state=present
+    with_items:
+      - libjansson4
+      - libhiredis0.10
+      - libcurl3
+    register: result
+    until: result|succeeded
+    retries: 5
+
+  - name: download mod_auth_openidc
+    get_url:
+      url: "{{ keystone.federation.sp.oidc.download.url }}"
+      dest: /tmp/{{ keystone.federation.sp.oidc.module_name }}
+      checksum: "{{ keystone.federation.sp.oidc.download.checksum }}"
+
+  - name: install mod_auth_openidc
+    apt: deb=/tmp/{{ keystone.federation.sp.oidc.module_name }}
+          install_recommends=yes
+    notify: reload apache
+    register: result
+    until: result|succeeded
+    retries: 5
+
+  - name: enable apache mod auth_openidc
+    apache2_module: name=auth_openidc
+    notify: reload apache
+  when: ursula_os == "ubuntu"
+
+- name: install mod_auth_openidc
+  yum:
+    name: "mod_auth_openidc"
+  when: ursula_os == "rhel"
+
+- name: create metadata folder for multiple oidc configuration files
+  file:
+    path: "/etc/{{ openstack_meta.apache[ursula_os].package_name }}/openidc/metadata/"
+    state: directory
+    owner: "{{ openstack_meta.apache[ursula_os].user }}"
+    group: root
+    mode: 0750
+    recurse: yes
+
+- name: create .client file for the IdPs
+  template:
+    src: etc/apache2/openidc/metadata/template.client
+    dest: /etc/{{ openstack_meta.apache[ursula_os].package_name }}/openidc/metadata/{{ item.metadata_file_name }}.client
+    owner: "{{ openstack_meta.apache[ursula_os].user }}"
+    group: root
+    mode: 0640
+  with_items: "{{ keystone.federation.sp.oidc.providers_info|default([]) }}"
+
+- name: create .conf file for the IdPs
+  template:
+    src: etc/apache2/openidc/metadata/template.conf
+    dest: /etc/{{ openstack_meta.apache[ursula_os].package_name }}/openidc/metadata/{{ item.metadata_file_name }}.conf
+    owner: "{{ openstack_meta.apache[ursula_os].user }}"
+    group: root
+    mode: 0640
+  with_items: "{{ keystone.federation.sp.oidc.providers_info|default([]) }}"
+
+- name: create .provider file for the IdPs
+  template:
+    src: etc/apache2/openidc/metadata/template.provider
+    dest: /etc/{{ openstack_meta.apache[ursula_os].package_name }}/openidc/metadata/{{ item.metadata_file_name }}.provider
+    owner: "{{ openstack_meta.apache[ursula_os].user }}"
+    group: root
+    mode: 0640
+  when: item.provider_metadata_url is undefined
+  with_items: "{{ keystone.federation.sp.oidc.providers_info|default([]) }}"
+
+- name: create .provider file for the IdPs
+  shell: "curl --fail {{ item.provider_metadata_url }}  > /etc/{{ openstack_meta.apache[ursula_os].package_name }}/openidc/metadata/{{ item.metadata_file_name }}.provider"
+  when: item.provider_metadata_url is defined
+  with_items: "{{ keystone.federation.sp.oidc.providers_info|default([]) }}"

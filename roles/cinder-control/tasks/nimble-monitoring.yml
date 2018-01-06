@@ -1,0 +1,15 @@
+---
+- name: nimble load check
+  sensu_check: name=nimble-load plugin=nimble-check.py
+               args='-w 5 -c 7 -n {{ sensu.nimble_san_ip }} load' use_sudo=true
+  notify: restart sensu-client
+
+- name: nimble raid check
+  sensu_check: name=nimble-raid plugin=nimble-check.py
+               args='-n {{ sensu.nimble_san_ip }} raid' use_sudo=true
+  notify: restart sensu-client
+
+- name: nimble array free check
+  sensu_check: name=nimble-array-free plugin=nimble-check.py
+               args='-c 10 -w 15 -n {{ sensu.nimble_san_ip }} array_free' use_sudo=true
+  notify: restart sensu-client

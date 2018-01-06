@@ -1,0 +1,90 @@
+---
+- name: controller 0 hosts file
+  hosts: controller[0]
+  tasks:
+    - name: add controller node to /etc/hosts
+      lineinfile: dest=/etc/hosts regexp={{ testenv_instance_prefix }}-controller-0
+                  insertafter=EOF
+                  line="127.0.1.1 {{ testenv_instance_prefix }}-controller-0"
+
+- name: controller 1 hosts file
+  hosts: controller[1]
+  tasks:
+    - name: add controller node to /etc/hosts
+      lineinfile: dest=/etc/hosts regexp={{ testenv_instance_prefix }}-controller-1
+                  insertafter=EOF
+                  line="127.0.1.1 {{ testenv_instance_prefix }}-controller-1"
+
+- name: compute 0 hosts file
+  hosts: compute[0]
+  tasks:
+    - name: add compute node to /etc/hosts
+      lineinfile: dest=/etc/hosts regexp={{ testenv_instance_prefix }}-compute-0
+                  insertafter=EOF
+                  line="127.0.1.1 {{ testenv_instance_prefix }}-compute-0"
+
+- name: tasks for all
+  hosts: all
+  serial: 10
+  tasks:
+  # Set Locale
+  - name: Generate en_US locale
+    command: /usr/sbin/locale-gen en_US
+    when: ansible_distribution == 'Ubuntu'
+
+  - name: set locale to en_US
+    command: /usr/sbin/update-locale LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
+    when: ansible_distribution == 'Ubuntu'
+
+  - name: add pip
+    package:
+      update_cache: yes
+      cache_valid_time: 3600
+      name: python-pip
+    register: result
+    until: result|succeeded
+    retries: 5
+
+  - name: get backports.ssl_match_hostname for apt repo installs
+    pip:
+      name: backports.ssl_match_hostname
+    register: result
+    until: result|succeeded
+    retries: 5
+
+  - name: Add BlueBox OpenStack PPA
+    apt_repository: repo='ppa:blueboxgroup/openstack'
+    register: result
+    until: result|succeeded
+    retries: 5
+
+  # don't run this on existing clusters
+  - name: Run a full dist-upgrade
+    apt: update_cache=yes cache_valid_time=3600 upgrade=dist
+    register: result
+    until: result|succeeded
+    retries: 5
+
+  - name: Ubuntu 14.04 style /etc/network/interfaces.d/ directory
+    file: dest=/etc/network/interfaces.d state=directory owner=root
+          group=root mode=0755
+
+  - name: /etc/network/interfaces to support interfaces.d/
+    template: src=../templates/etc/network/interfaces
+              dest=/etc/network/interfaces
+
+  - name: default interfaces.d/eth0.cfg
+    template: src=../templates/etc/network/interfaces.d/eth0.cfg
+              dest=/etc/network/interfaces.d/eth0.cfg
+
+- name: network tasks
+  hosts: network
+  tasks:
+  - name: interfaces.d/eth0.cfg with NAT for floating IP pool
+    template: src=../templates/etc/network/interfaces.d/eth0-controllers.cfg
+              dest=/etc/network/interfaces.d/eth0.cfg
+    notify: bounce eth0
+
+  handlers:
+  - name: bounce eth0
+    shell: ifdown eth0; ifup eth0

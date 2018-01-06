@@ -1,0 +1,194 @@
+---
+project_name: keystone
+keystone:
+  token_expiration_in_seconds: 86400
+  admin_workers: 5
+  public_workers: 5
+  admin_project_name: admin
+  admin_project_domain_name: Default
+  uwsgi:
+    method: port
+    buffer_size: 114688
+    http_port:
+      admin: 9091
+      public: 9092
+    home:
+      distro: /usr/lib/python2.7/site-packages/keystone
+      source: /opt/openstack/current/keystone
+      package: /opt/openstack/current/keystone
+  distro:
+    project_packages:
+      - openstack-selinux
+      - openstack-keystone
+    python_post_dependencies: []
+  # Example for distro/source:
+  # python_post_dependencies:
+  #   - name: python-memcached
+  #     version: 1.58
+  #     pip_extra_args: '--extra-index-url https://pypi-mirror.openstack.blueboxgrid.com/root/pypi...'
+  source:
+    rev: newton-eol
+    upper_constraints: '{{ openstack_meta.upper_constraints }}'
+    python_dependencies:
+      - { name: PyMySQL }
+      - { name: uwsgi }
+      - { name: pyldap }
+      - { name: ldappool }
+    python_post_dependencies: []
+    system_dependencies:
+        ubuntu:
+        - openssl
+        - libldap2-dev
+        - libsasl2-dev
+        - libkrb5-dev
+        rhel:
+        - openssl
+        - openldap-devel
+        - libgsasl-devel
+        - krb5-devel
+  alternatives:
+    - keystone-manage
+    - keystone-wsgi-admin
+    - keystone-wsgi-public
+  jellyroll: False # custom middleware for password compliance
+  security_compliance:
+    # if enabled then the jellyroll middleware filter:passval
+    # should be removed from keystone-paste.ini
+    enabled: false
+    password_regex: '^(?=.*\d)(?=.*[a-z]).{8,}$'
+    password_regex_description: 'Password is not compliant. Password must contain lowercase letters, digits, and be at least 8 characters in length.'
+  roles:
+    - project_admin
+    - cloud_admin
+    - heat_stack_owner
+    - service
+    - _member_
+  logs:
+    - paths:
+      - /var/log/keystone/keystone-all.log
+      fields:
+        type: openstack
+        tags: keystone,keystone-all
+    - paths:
+        - /var/log/keystone/keystone-manage.log
+      fields:
+        type: openstack
+        tags: keystone,keystone-manage
+    - paths:
+        - /var/log/keystone/keystone.log
+      fields:
+        type: openstack
+        tags: keystone,keystone-log
+  logging:
+    debug: False
+    verbose: True
+  monitoring:
+    sensu_checks:
+      check_keystone_api:
+        criticality: 'critical'
+  federation:
+    enabled: False
+    idp:
+      # Enable keystone to be an identity provider
+      # for keystone to keystone federation
+      k2k:
+        enabled: False
+        service_providers: []
+        saml_signing_cert: ""
+        saml_signing_key: ""
+    sp:
+      # Enable keystone to be a service provider
+      # for keystone to keystone federation
+      saml:
+        sp_id: None
+        enabled: False
+        horizon_enabled: False
+        support_contact: ""
+        auth_signing: True
+        # These are service providers that will be configured into Shibboleth
+        providers:
+          - keystone_id: Place_holder_IDP
+            saml_entity_id: Place_holder_IDP
+            horizon_name: Place_holder_IDP
+            enabled: True
+            k2k_enabled: False
+            verify_idp_cert: True
+            metadata_provider_type: url
+            metadata_file_path: /etc/shibboleth/idp_metadata.xml
+            metadata_file_content: None
+            idp_metadata_min_refresh_delay: 600
+            idp_metadata_max_refresh_delay: 3600
+            idp_metadata_factor_refresh_delay: 0.75
+            idp_metadata_url: None
+            attributes: []
+        shibboleth_crt: None
+        shibboleth_key: None
+      oidc:
+        enabled: False
+        remote_id_attribute: 'HTTP_OIDC_CLAIM_ISS'
+        download:
+          url: https://file-mirror.openstack.blueboxgrid.com/misc/libapache2-mod-auth-openidc_1.8.5-1ubuntu1.trusty.1_amd64.deb
+          checksum: sha1:c0d37c0b6bcc1b7255674f757739f2ed5e8300eb
+        module_name: libapache2-mod-auth-openidc_1.8.5-1ubuntu1.trusty.1_amd64.deb
+        scope: 'openid'
+        issuer: None
+        remote_user_claim: None
+        user_info_endpoint: None
+        authorization_endpoint: None
+        token_endpoint: None
+        introspection_endpoint: None
+        client_id: None
+        client_secret: None
+        crypto_passphrase: None
+        redirect_uri: None
+        ssl_validate_server: True
+      identity_providers: []
+      groups: []
+      role: []
+      mappings: []
+      protocols: []
+
+  bootstrap:
+    user: admin
+    password: "{{ secrets.admin_password }}"
+    project: admin
+    role: admin
+  ldap_domain:
+    enabled: False
+    domain: users
+    project: users
+    ldap:
+      chase_referrals: false
+      group_allow_create: false
+      group_allow_delete: false
+      group_allow_update: false
+      group_desc_attribute: description
+      group_id_attribute: cn
+      group_member_attribute: uniquemember
+      group_name_attribute: cn
+      group_objectclass: groupOfUniqueNames
+      group_tree_dn: ou=memberlist,ou=groups,o=example.com
+      page_size: 0
+      project_allow_create: false
+      project_allow_delete: false
+      project_allow_update: false
+      query_scope: sub
+      role_allow_create: false
+      role_allow_delete: false
+      role_allow_update: false
+      suffix: o=example.com
+      tls_req_cert: never
+      url: ldaps://openstack.example.com:636/
+      user_allow_create: false
+      user_allow_delete: false
+      user_allow_update: false
+      user_enabled_attribute: enabled
+      user_filter: ""
+      user_id_attribute: mail
+      user_mail_attribute: mail
+      user_name_attribute: mail
+      user_objectclass: Person
+      user_pass_attribute: userPassword
+      user_tree_dn: ou=groups,o=example.com
+      user: ""
+      password: ""

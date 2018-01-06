@@ -1,0 +1,31 @@
+---
+rabbitmq:
+  cluster: False
+  erlang_cookie: 6IMgelGs3Ygu
+  user: openstack
+  nodename: 'rabbit@{{ ansible_hostname }}'
+  ip: '0.0.0.0'
+  port: 5672
+  management_port: 15672
+  admin_cli_url: 'http://localhost:15672/cli/rabbitmqadmin'
+  numqueues_warning_multiplier: 60
+  numqueues_critical_multiplier: 120
+  nofile: 10240
+  version:
+    rabbitmq_server: '3.6.14*'
+    esl_erlang: '1:19*'
+  monitoring:
+    sensu_checks:
+      rabbitmq_cluster:
+        criticality: 'critical'
+      timeout: 5
+  systemd:
+    custom: |
+      [Service]
+      LimitNOFILE=300000
+  logs:
+    - paths:
+        - /var/log/rabbitmq/*.log
+      fields:
+        type: rabbitmq
+        tags: rabbitmq

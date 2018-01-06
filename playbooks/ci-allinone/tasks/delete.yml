@@ -1,0 +1,21 @@
+---
+- name: de-provision test instances
+  hosts: localhost
+
+  vars_files:
+    - ../vars/main.yml
+  vars:
+    ansible_python_interpreter: "/usr/bin/env python"
+
+  tasks:
+    - name: delete test instances
+      os_server:
+        name: "{{ item }}"
+        state: absent
+      with_items: "{{ testenv_instance_names }}"
+
+    - name: remove security group
+      os_security_group:
+        name: "{{ testenv_security_groups }}"
+        state: absent
+      when: testenv_security_groups_cleanup

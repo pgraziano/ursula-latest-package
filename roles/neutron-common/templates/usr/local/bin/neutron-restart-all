@@ -1,0 +1,8 @@
+#!/bin/bash
+
+service {{ neutron.services.neutron_server.name }} restart
+service {{ neutron.services.neutron_linuxbridge_agent.name }} restart
+service {{ neutron.services.neutron_metadata_agent.name }} restart
+
+# neutron-dhcp-agent and neutron-l3-agent will be restarted
+# when neutron-linuxbridge-agent is restarted due to service deps

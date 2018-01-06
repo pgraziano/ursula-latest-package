@@ -1,0 +1,44 @@
+---
+stack_env: example_allinone
+floating_ip: 172.16.0.100
+ursula_os: 'ubuntu'
+
+xtradb:
+  sst_auth_password: asdf
+
+percona:
+  replication: False
+
+neutron:
+  enable_external_interface: True
+
+sensu_checks:
+    percona:
+      check_cluster_size:
+        sudo: true
+        handler: default
+        notification: "unexpected number of mysql processes"
+        interval: 120
+        standalone: true
+        command: "percona-cluster-size.rb -d /root/.my.cnf --expected 3 --criticality critical"
+        service_owner: openstack
+        dependencies: "{{ 'keepalive' | sensu_dependencies(hostvars, groups, 'db') }}"
+        # above is incredibly ugly, but works. Creates the list below.
+        #dependencies:
+        #  - "controller1.ursula-vagrant/keepalive"
+        #  - "controller2.ursula-vagrant/keepalive"
+        #  - "compute1.ursula-vagrant/keepalive"
+      check_mysql_process:
+        handler: default
+        notification: "unexpected number of mysql processes"
+        interval: 120
+        standalone: true
+        command: "check-procs.rb -p mysql -W 1 -C 1"
+        service_owner: openstack
+      check_garbd_process:
+        handler: default
+        notification: "unexpected number of garbd processes"
+        interval: 120
+        standalone: true
+        command: "check-procs.rb -p garbd -W 1 -C 1"
+        service_owner: openstack

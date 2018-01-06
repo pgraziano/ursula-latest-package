@@ -1,0 +1,44 @@
+---
+- name: tests lbaas
+  hosts: controller[0]
+  vars:
+    pub_net: external
+    pri_net: internal
+    sub_net: internal_v4
+    stack_name: test_lbaas
+  tasks:
+  - name: copy heat stack yaml file to hosts
+    copy: >
+      src=lb_stack.yml
+      dest=/tmp/lb_stack.yml
+
+  - name: create heat stack for lbaas
+    shell: >
+      . /root/stackrc;
+      openstack stack create --template /tmp/lb_stack.yml
+      --parameter
+      'public_network={{ pub_net }};private_network={{ pri_net }};subnet={{ sub_net }}'
+      --enable-rollback --wait {{ stack_name }}
+
+  - name: list loadbalancer created from stack
+    shell: |
+      . /root/stackrc;
+      neutron lbaas-loadbalancer-list | grep {{ stack_name }} | awk '{print $6}'
+    register: vip_add
+
+  - name: list pool created from stack
+    shell: |
+      . /root/stackrc;
+      neutron lbaas-pool-list | grep {{ stack_name }} | awk '{print $2}'
+    register: pool_id
+
+  - name: list member list created from stack
+    shell: |
+      . /root/stackrc;
+      neutron lbaas-member-list {{ pool_id.stdout }} | grep True
+
+  - name: list floating ip created from stack
+    shell: . /root/stackrc; neutron floatingip-list | grep {{ vip_add.stdout }}
+
+  - name: delete test stack
+    shell: . /root/stackrc; openstack stack delete {{ stack_name }}

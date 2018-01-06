@@ -1,0 +1,8 @@
+---
+- name: install raid utilities
+  package: name={{ item }}
+  register: result
+  until: result|succeeded
+  retries: 5
+
+  with_items: "{{ common.hwraid.clients }}"

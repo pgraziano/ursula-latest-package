@@ -1,0 +1,38 @@
+---
+dependencies:
+  - role: openstack-meta
+  - role: endpoints
+  - role: monitoring-common
+    when: monitoring.enabled|default(True)|bool
+  - role: logging-config
+    when: logging.enabled|default(True)|bool
+    service: neutron
+    logdata: "{{ neutron.logs }}"
+  - role: openstack-source
+    project_name: neutron
+    project_rev: "{{ neutron.source.rev }}"
+    rootwrap: True
+    alternatives: "{{ neutron.alternatives }}"
+    system_dependencies: "{{ neutron.source.system_dependencies }}"
+    python_dependencies: "{{ neutron.source.python_dependencies }}"
+    python_post_dependencies: "{{ neutron.source.python_post_dependencies }}"
+    upper_constraints: "{{ neutron.source.upper_constraints }}"
+    when: openstack_install_method == 'source'
+  - role: openstack-package
+    project_name: neutron
+    rootwrap: True
+    alternatives: "{{ neutron.alternatives }}"
+    when: openstack_install_method == 'package'
+  - role: openstack-distro
+    project_name: neutron
+    project_packages: "{{ neutron.distro.project_packages }}"
+    python_post_dependencies: "{{ neutron.distro.python_post_dependencies }}"
+    rootwrap: True
+    when: openstack_install_method == 'distro'
+  - role: openstack-distro
+    project_name: neutron-lbaas
+    project_packages: "{{ neutron.distro.lbaas_v2.project_packages }}"
+    rootwrap: True
+    when:
+      - openstack_install_method == 'distro'
+      - (neutron.lbaas.enabled == "smart" and groups['controller'][0] not in groups['compute']) or neutron.lbaas.enabled|bool

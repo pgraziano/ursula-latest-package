@@ -1,0 +1,25 @@
+#!/usr/bin/python
+import yaml
+
+URSULA_RELEASE_PATH = '/etc/ursula-release'
+
+
+def print_ursula_release_info():
+    with open(URSULA_RELEASE_PATH, 'r') as fh:
+        data = yaml.load(fh)
+        print
+        print 'Ursula Node Data:'
+        for key, value in data['ursula'].items():
+            print '%s: %s' % (key.capitalize(), value)
+        print
+
+
+def main():
+    try:
+        print_ursula_release_info()
+    except Exception as e:
+        pass
+
+
+if __name__ == '__main__':
+    main()

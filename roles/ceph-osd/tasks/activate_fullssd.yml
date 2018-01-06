@@ -1,0 +1,10 @@
+---
+- name: prepare osd disks
+  command: ceph-disk prepare /dev/{{ item.item }}
+  with_items: "{{ hostvars[outer_item].ceph_partitions.results }}"
+  when: item.rc != 0
+
+- name: activate osds
+  command: ceph-disk activate /dev/{{ item.item }}1
+  with_items: "{{ hostvars[outer_item].ceph_partitions.results }}"
+  when: item.rc != 0

@@ -1,0 +1,152 @@
+---
+- name: install project system dependencies
+  package: name={{ item }}
+  with_items: "{{ openstack_source.system_dependencies[ursula_os] }}"
+  register: result
+  until: result|succeeded
+  retries: 5
+
+- name: "get {{ project_name }} source repo"
+  git: repo="{{ openstack_source.git_mirror }}/{{ project_name }}.git"
+       dest="/opt/stack/{{ project_name }}"
+       version="{{ openstack_source.project_rev }}"
+       update="{{ openstack_source.git_update }}"
+  register: git_result
+  until: git_result|success
+  retries: 3
+
+- name: set pip args fact
+  set_fact:
+    pip_extra_args: "{{ openstack_source.pip_extra_args }}"
+
+- name: set pip proxy args
+  set_fact:
+    pip_extra_args: "{{ pip_extra_args }} -i {{ openstack.pypi_mirror }}"
+  when: openstack.pypi_mirror is defined
+
+- name: update pip in virtualenv
+  pip:
+    name: pip
+    state: latest
+    virtualenv: "{{ openstack_source.virtualenv_base }}/{{ project_name }}"
+    extra_args: "{{ pip_extra_args }}"
+  register: result
+  until: result|succeeded
+  retries: 5
+
+- name: write constraints file
+  copy:
+    src: files/constraints.txt
+    dest: /opt/stack/constraints.txt
+    force: true
+  when: upper_constraints == None or upper_constraints == ""
+
+- name: get constraints file
+  get_url:
+    url: "{{ upper_constraints }}"
+    dest: /opt/stack/constraints.txt
+    force: true
+  when:
+    - upper_constraints != None
+    - upper_constraints != ""
+
+- name: set pip constraints args
+  set_fact:
+    pip_extra_args: "{{ pip_extra_args }} -c /opt/stack/constraints.txt"
+
+- name: update setuptools in virtualenv
+  pip:
+    name: setuptools
+    state: latest
+    virtualenv: "{{ openstack_source.virtualenv_base }}/{{ project_name }}"
+    extra_args: "{{ pip_extra_args }}"
+  register: result
+  until: result|succeeded
+  retries: 5
+
+- name: set code has changed fact
+  set_fact:
+    code_has_changed: git_result | changed
+
+- name: python requirements for project
+  pip:
+    name: "{{ item.name }}"
+    version: "{{ item.version|default(omit) }}"
+    virtualenv: "{{ openstack_source.virtualenv_base }}/{{ project_name }}"
+    extra_args: "{{ pip_extra_args }}"
+    editable: false
+  with_items: "{{ openstack_source.python_dependencies }}"
+  register: result
+  until: result|succeeded
+  retries: 5
+
+- name: pip install project
+  pip:
+    name: "/opt/stack/{{ project_name }}"
+    extra_args: "{{ pip_extra_args }}"
+    virtualenv: "{{ openstack_source.virtualenv_base }}/{{ project_name }}"
+    editable: false
+  register: pip_result
+  until: pip_result|success
+  retries: 3
+  delay: 10
+  notify:
+    - update ca-certs
+
+- name: python post dependencies for project
+  pip:
+    name: "{{ item.name }}"
+    version: "{{ item.version|default(omit) }}"
+    virtualenv: "{{ openstack_source.virtualenv_base }}/{{ project_name }}"
+    extra_args: "{{ pip_extra_args }} {{ item.pip_extra_args|default('') }}"
+    editable: false
+  with_items: "{{ openstack_source.python_post_dependencies }}"
+  register: result
+  until: result|succeeded
+  retries: 5
+  no_log: true
+
+- name: setup openstack current base path
+  file:
+    dest: /opt/openstack/current
+    state: directory
+
+- name: test whether current project symlink exists
+  stat:
+    path: /opt/openstack/current/{{ project_name }}
+  register: symlink_exists
+
+- name: setup current symlink
+  file:
+    src: "{{ openstack_source.virtualenv_base }}/{{ project_name }}"
+    dest: /opt/openstack/current/{{ project_name }}
+    state: link
+  when: not symlink_exists.stat.exists or upgrade | default(false) | bool
+
+- name: ensure project config directory exists
+  file: name="/etc/{{ project_name }}" state=directory
+  when: openstack_source.rootwrap|bool
+
+- name: stat rootwrap.d
+  stat: path="/etc/{{ project_name }}/rootwrap.d"
+  register: st
+  when: openstack_source.rootwrap|bool
+
+- name: remove rootwrap.d if a directory
+  file: dest="/etc/{{ project_name }}/rootwrap.d" state=absent
+  when: openstack_source.rootwrap|bool and st.stat is defined and st.stat.isdir
+
+- name: setup project rootwrap
+  file: src="/opt/stack/{{ project_name }}/etc/{{ project_name }}/rootwrap.d"
+        dest="/etc/{{ project_name }}/rootwrap.d" state=link
+  when: openstack_source.rootwrap|bool
+
+- name: additional handlers
+  debug: msg="Running additional handlers"
+  notify: "{{ additional_handlers|default([]) }}"
+
+- name: update-alternatives
+  alternatives: name={{ item }}
+                path={{ openstack_source.virtualenv_base }}/{{ project_name }}/bin/{{ item }}
+                link=/usr/local/bin/{{ item }}
+  with_items: "{{ alternatives|default([]) }}"

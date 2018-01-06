@@ -1,0 +1,89 @@
+---
+project_name: glance
+glance:
+  services:
+    glance_api: "{{ openstack_meta.glance.services.glance_api[ursula_os] }}"
+    glance_registry: "{{ openstack_meta.glance.services.glance_registry[ursula_os] }}"
+  rsync:
+    service: "{{ ( ursula_os == 'ubuntu' ) | ternary('rsync', 'rsyncd') }}"
+    defaults: "{{ ( ursula_os == 'ubuntu' ) | ternary('/etc/default/rsync', '/etc/sysconfig/rsyncd') }}"
+  allow_image_locations: False
+  api_workers: 5
+  rbd_store_chunk_size: 8
+  registry_workers: 5
+  state_path: "{{ state_path_base }}/glance"
+  sync:
+    enabled: true
+    listening_port: 25307
+    download_limit: 0
+    upload_limit: 0
+    folder_rescan_interval: 600
+    storage_path: /var/lib/btsync
+    device_name: image-cache
+    # This needs to match the leading paths from state_path above
+    # and match the path listed in glance-api.conf for local image
+    # store. TODO: find a way to use a variable for all of these
+    dir: "{{ state_path_base }}/glance/images"
+  store_smart: True
+  store_swift: False
+  store_ceph: False
+  store_file: False
+  distro:
+    project_packages:
+      - openstack-selinux
+      - openstack-glance
+    python_post_dependencies: []
+  source:
+    rev: newton-eol
+    upper_constraints: '{{ openstack_meta.upper_constraints }}'
+    python_dependencies:
+      - { name: PyMySQL }
+      - { name: python-swiftclient }
+      - { name: "git+https://github.com/blueboxgroup/bbc-openstack-plugins.git#egg=bbc_openstack_plugins" }
+    python_post_dependencies: []
+    system_dependencies:
+        ubuntu:
+        - libxml2-dev
+        rhel:
+        - libxml2-devel
+  alternatives:
+    - glance-api
+    - glance-cache-cleaner
+    - glance-cache-manage
+    - glance-cache-prefetcher
+    - glance-cache-pruner
+    - glance-control
+    - glance-manage
+    - glance-registry
+    - glance-replicator
+    - glance-scrubber
+  logs:
+    - paths:
+        - /var/log/glance/glance-api.log
+      fields:
+        type: openstack
+        tags: glance,glance-api
+    - paths:
+        - /var/log/glance/glance-manage.log
+      fields:
+        type: openstack
+        tags: glance,glance-manage
+    - paths:
+        - /var/log/glance/glance-registry.log
+      fields:
+        type: openstack
+        tags: glance,glance-registry
+  logging:
+    debug: False
+    verbose: True
+  cafile: "{{ ssl.cafile }}"
+  monitoring:
+    sensu_checks:
+      check_glance_api:
+        criticality: 'critical'
+      check_glance_store:
+        criticality: 'critical'
+  auditing:
+    enabled: False
+    logging: False
+  swift_large_object_size: 250

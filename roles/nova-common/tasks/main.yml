@@ -1,0 +1,88 @@
+---
+- name: nova user
+  user:
+    name: nova
+    comment: nova
+    shell: /bin/sh
+    system: yes
+    home: "{{ nova.state_path }}"
+    createhome: yes
+    generate_ssh_key: yes
+    ssh_key_bits: 4096
+
+- name: nova packages
+  package:
+    name: "{{ item }}"
+  with_items: "{{ nova.install_packages }}"
+  register: result
+  until: result|succeeded
+  retries: 5
+
+- name: create nova config dir
+  file: dest=/etc/nova state=directory
+
+- name: create shared lock path for nova and cinder
+  file:
+    dest: "{{ state_path_base }}/sharedlock"
+    state: directory
+    mode: 0770
+    owner: root
+    group: root
+
+- name: set acls on shared path
+  acl:
+    name: "{{ state_path_base }}/sharedlock"
+    entity: nova
+    etype: user
+    permissions: rwx
+    state: present
+
+- name: create nova cache dir
+  file: dest=/var/cache/nova state=directory mode=0700 owner=nova group=nova
+
+- include: selinux.yml
+  when: ansible_distribution == 'RedHat'
+  tags: selinux
+
+- name: create nova log dir
+  file: dest=/var/log/nova state=directory mode=2750 owner=nova group=adm
+
+- name: Change nova log dir acl
+  acl: name=/var/log/nova state=present default=yes etype={{ item.etype }} permissions={{ item.permission }}
+  with_items:
+    - etype: user
+      permission: rw
+    - etype: group
+      permission: r
+    - etype: other
+      permission: r
+
+- name: nova config
+  action: template src={{ item }} dest=/etc/nova mode=0640
+          owner=root group=nova
+  with_fileglob: ../templates/etc/nova/*
+  tags: nova-config
+  notify:
+    - restart nova services
+
+- name: copy policy files to openstack-dashboard
+  template:
+    src: "etc/nova/policy.json"
+    dest: "/etc/openstack-dashboard/nova_policy.json"
+    owner: "root"
+    group: "{{ openstack_meta.apache[ursula_os].group }}"
+    mode: 0640
+  when: inventory_hostname in groups['controller']
+
+- name: nova sudoer
+  template: |
+    src=etc/sudoers.d/nova
+    dest=/etc/sudoers.d/nova
+    owner=root
+    group=root
+    mode=0440
+
+- include: logging.yml
+  tags:
+    - logrotate
+    - logging

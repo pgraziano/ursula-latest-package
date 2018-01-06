@@ -1,0 +1,14 @@
+---
+- block:
+  - name: prevent dnsmasq from add itself to /etc/resolv.conf via resolvconf
+    lineinfile: dest=/etc/default/dnsmasq regexp="^DNSMASQ_EXCEPT="
+                line="DNSMASQ_EXCEPT=lo"
+
+  - name: delete localhost dnsmask nameserver
+    command: resolvconf -d lo.dnsmasq
+  when: ursula_os == 'ubuntu'
+
+- name: neutron dnsmasq config
+  template: src=etc/dnsmasq.conf dest=/etc/dnsmasq.conf mode=0644
+  notify:
+     - restart neutron services

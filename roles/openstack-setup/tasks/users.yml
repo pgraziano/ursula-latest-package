@@ -1,0 +1,22 @@
+---
+- name: keystone services
+  environment:
+    PYTHONPATH: "{{ basevenv_lib_dir|default(omit) }}"
+  keystone_service: name={{ item.name }}
+                    type={{ item.type }}
+                    description='{{ item.description }}'
+                    public_url={{ item.public_url }}
+                    internal_url={{ item.internal_url }}
+                    admin_url={{ item.admin_url }}
+                    region=RegionOne
+                    auth_url={{ endpoints.auth_uri }}
+                    tenant_name=admin
+                    login_user=admin
+                    login_password={{ secrets.admin_password }}
+                    insecure={{ insecure|default(omit) }}
+  with_items: "{{ keystone.services }}"
+  when:
+    - ({{item.name}}.enabled is undefined or {{item.name}}.enabled|bool)
+    - item.name not in ['cinder','cinderv2','cinderv3']
+  run_once: true
+  register: services_setup

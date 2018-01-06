@@ -1,0 +1,7 @@
+---
+dependencies:
+  - role: logging-config
+    service: apache
+    logdata: "{{ apache.logs }}"
+    when: logging.enabled|default('True')|bool
+  - role: openstack-meta

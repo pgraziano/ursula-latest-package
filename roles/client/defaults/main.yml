@@ -1,0 +1,34 @@
+---
+client:
+  upper_constraints: "{{ openstack_meta.upper_constraints }}"
+  use_constraints: True
+  write_stackrc: True
+  self_signed_cert: false
+  dep_pkgs:
+    - python-prettytable
+  names:
+    pip_pkgs:
+      - python-keystoneclient
+      - python-glanceclient
+      - python-novaclient
+      - python-neutronclient
+      - python-cinderclient
+      - python-heatclient
+      - python-ceilometerclient
+      - python-ironicclient
+      - python-swiftclient
+      - python-magnumclient
+      - python-openstackclient
+      - python-barbicanclient
+    yum_pkgs:
+      - python-keystoneclient
+      - python-glanceclient
+      - python-novaclient
+      - python-neutronclient
+      - python-cinderclient
+      - python-heatclient
+      - python-ceilometerclient
+      - python-ironicclient
+      - python-swiftclient
+      - python-magnumclient
+      - python-openstackclient

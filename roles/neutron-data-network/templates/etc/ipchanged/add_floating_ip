@@ -1,0 +1,49 @@
+#!/bin/bash
+
+# Send gratuitous ARP broadcast for other pNodes to find RabbitMQ/MySQL endpoint
+arping -A -I {{ ansible_default_ipv4.interface }} {{ undercloud_floating_ip }} -c 3
+arping -U -I {{ ansible_default_ipv4.interface }} {{ undercloud_floating_ip }} -c 3
+
+{% if floating_ip is defined %}
+# Send gratuitous ARP to default gateway (some discard broadcasts if already known)
+arping -A -I {{ ansible_default_ipv4.interface }} -s {{ floating_ip }} {{ ansible_default_ipv4.gateway }} -c 3
+{% endif %}
+
+
+. /root/stackrc
+export HOSTNAME=$( hostname )
+
+function neutron_and_local_agents_alive () {
+  logger "ipchanged UP checking neutron health"
+  local OUTPUT=$( neutron agent-list --host=${HOSTNAME} )
+  # Any agents down, not ready
+  echo ${OUTPUT} | grep -q 'xxx' && return 1
+  # At least one agent up, and none down, ready
+  echo ${OUTPUT} | grep -q ':-)' && return 0
+  # Didn't receive any agents or api returned an error
+  return 1
+}
+
+logger "ipchanged UP floating interface"
+
+# restart neutron-server so that it re-connects to rabbit
+restart neutron-server
+
+# restart neutron-linuxbridge-agent so that agents work
+restart neutron-linuxbridge-agent
+
+sleep 5
+
+# Wait up to 5 minutes for Neutron to recover from MySQL and HAProxy cutover
+TRIES=0
+until neutron_and_local_agents_alive || [ $(( TRIES++ )) -eq 10 ]; do
+  sleep 30
+done
+
+if [[ neutron_and_local_agents_alive ]]; then
+  logger "ipchanged UP neutron agents OK"
+  logger "ipchanged UP migrating neutron services"
+  /usr/local/bin/migrate_neutron_services
+else
+  logger "ipchanged UP timed out waiting for neutron agents"
+fi

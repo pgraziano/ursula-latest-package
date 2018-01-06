@@ -1,0 +1,7 @@
+---
+- name: restart magnum services
+  service: name={{ item }} state=restarted must_exist=false
+  with_items:
+    - magnum-api
+    - magnum-conductor
+  when: restart|default(True)

@@ -1,0 +1,6 @@
+---
+- name: os-hardening for all hosts
+  hosts: all:!vyatta-*
+  any_errors_fatal: true
+  roles:
+    - role: ../../openstack-ansible-security

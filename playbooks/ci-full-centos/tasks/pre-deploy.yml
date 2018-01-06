@@ -1,0 +1,68 @@
+---
+- name: controller 0 hosts file
+  hosts: controller[0]
+  tasks:
+    - name: add controller node to /etc/hosts
+      lineinfile: dest=/etc/hosts regexp={{ testenv_instance_prefix }}-controller-0
+                  insertafter=EOF
+                  line="127.0.1.1 {{ testenv_instance_prefix }}-controller-0"
+
+- name: controller 1 hosts file
+  hosts: controller[1]
+  tasks:
+    - name: add controller node to /etc/hosts
+      lineinfile: dest=/etc/hosts regexp={{ testenv_instance_prefix }}-controller-1
+                  insertafter=EOF
+                  line="127.0.1.1 {{ testenv_instance_prefix }}-controller-1"
+
+- name: compute 0 hosts file
+  hosts: compute[0]
+  tasks:
+    - name: add compute node to /etc/hosts
+      lineinfile: dest=/etc/hosts regexp={{ testenv_instance_prefix }}-compute-0
+                  insertafter=EOF
+                  line="127.0.1.1 {{ testenv_instance_prefix }}-compute-0"
+
+- name: tasks for all
+  hosts: all
+  serial: 10
+  tasks:
+  # Set Locale
+  - name: Generate en_US locale
+    command: localedef -c -f UTF-8 -i en_US en_US.UTF-8
+
+  - name: add pip
+    yum: name={{item}} state=installed
+    with_items:
+      - epel-release
+    register: result
+    until: result|succeeded
+    retries: 5
+
+  - name: add pip
+    yum: name={{item}} state=installed
+    with_items:
+      - python-pip
+    register: result
+    until: result|succeeded
+    retries: 5
+
+  - name: get backports.ssl_match_hostname for apt repo installs
+    pip:
+      name: backports.ssl_match_hostname
+    register: result
+    until: result|succeeded
+    retries: 5
+
+  #- name: Add BlueBox OpenStack PPA
+  #  apt_repository: repo='ppa:blueboxgroup/openstack'
+  #  register: result
+  #  until: result|succeeded
+  #  retries: 5
+
+  # don't run this on existing clusters
+  - name: Update all packages
+    yum: name=* state=latest
+    register: result
+    until: result|succeeded
+    retries: 5

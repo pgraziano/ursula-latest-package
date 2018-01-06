@@ -1,0 +1,14 @@
+---
+- hosts: all:!vyatta-*
+  roles:
+    - ../roles/common
+
+- name: openstack controller services
+  hosts: controller
+  roles:
+    - ../roles/haproxy
+
+- name: swift code and config
+  hosts: swiftnode
+  roles:
+    - ../roles/haproxy

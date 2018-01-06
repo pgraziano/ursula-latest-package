@@ -1,0 +1,3 @@
+---
+preflight_checks:
+  ceph_minimum_version: 10

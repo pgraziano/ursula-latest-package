@@ -1,0 +1,68 @@
+---
+- name: checking neutron subnet {{ item.name }}
+  environment:
+    PYTHONPATH: "{{ basevenv_lib_dir|default(omit) }}"
+  os_subnets_facts:
+    name: "{{ item.name }}"
+    auth:
+      auth_url: "{{ endpoints.auth_uri }}"
+      project_name: admin
+      username: admin
+      password: "{{ secrets.admin_password }}"
+    validate_certs: "{{ validate_certs|default(omit) }}"
+
+- block:
+  - name: ensure cidr
+    assert:
+      that: openstack_subnets[0]['cidr'] == item.cidr
+      msg: "Could not find matching attribute for cidr."
+
+  - name: ensure gateway_ip
+    assert:
+      that: openstack_subnets[0]['gateway_ip'] == item.gateway_ip
+      msg: "Could not find matching attribute for gateway_ip."
+
+  - name: ensure ip_version
+    assert:
+      that: openstack_subnets[0]['ip_version'] == item.ip_version
+      msg: "Could not find matching attribute for ip_version."
+
+  - name: ensure enable_dhcp
+    assert:
+      that: openstack_subnets[0]['enable_dhcp'] == {{ item.enable_dhcp | bool }}
+      msg: "Could not find matching attribute for enable_dhcp."
+
+  - name: ensure ipv6_ra_mode
+    assert:
+      that: openstack_subnets[0]['ipv6_ra_mode'] == item.ipv6_ra_mode
+      msg: "Could not find matching attribute for ipv6_ra_mode."
+    when: item.ipv6_ra_mode is defined
+
+  - name: ensure pool_start
+    assert:
+      that: openstack_subnets[0]['allocation_pools'][0]['start'] == item.pool_start
+      msg: "Could not find matching attribute for pool_start."
+    when: item.pool_start is defined
+
+  - name: ensure pool_end
+    assert:
+      that: openstack_subnets[0]['allocation_pools'][0]['end'] == item.pool_end
+      msg: "Could not find matching attribute for pool_end."
+    when: item.pool_end is defined
+
+  - name: ensure ipv6_address_mode
+    assert:
+      that: openstack_subnets[0]['ipv6_address_mode'] == item.ipv6_address_mode
+      msg: "Could not find matching attribute for ipv6_address_mode."
+    when: item.ipv6_ra_mode is defined
+
+  when: openstack_subnets[0] is defined
+
+#FIXME: Add dns_nameservers checks, there could be zero to N number of DNS nameservers.
+#       In most cases, there are two or three. This will require parsing through the array of
+#       DNS nameservers stored in openstack_subnets[0]['dns_nameservers'] and check if each
+#       IP exists in item.dns_nameservers. For example:
+#          openstack_subnets[0]['dns_nameservers'][0] in item.dns_nameservers
+#          openstack_subnets[0]['dns_nameservers'][1] in item.dns_nameservers
+#          ...
+#       For simplicity, this will be skipped for now.

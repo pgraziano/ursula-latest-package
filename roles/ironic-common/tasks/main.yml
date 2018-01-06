@@ -1,0 +1,42 @@
+---
+- name: create ironic user
+  user: name=ironic
+        comment=ironic
+        shell=/bin/false
+        system=yes
+        home=/nonexistent
+        createhome=no
+
+- name: create ironic config directories
+  file: dest={{ item }} state=directory owner=root group=ironic mode=0750
+  with_items:
+    - /etc/ironic
+    - /etc/ironic/environment.d
+
+- name: create ironic lib directory
+  file: dest={{ item }} state=directory owner=ironic group=ironic mode=0755
+  with_items:
+    - /var/lib/ironic
+
+- name: create ironic log directory
+  file: dest=/var/log/ironic state=directory owner=root group=ironic mode=0770
+
+- name: ironic config
+  template: src=etc/ironic/ironic.conf dest=/etc/ironic/ironic.conf mode=0640
+            owner=root group=ironic
+
+- name: ironic policy config
+  template: src=etc/ironic/policy.json dest=/etc/ironic/policy.json mode=0640
+            owner=root group=ironic
+
+- name: ironic sudoer
+  template: src=etc/sudoers.d/ironic
+            dest=/etc/sudoers.d/ironic
+            owner=root
+            group=root
+            mode=0440
+
+- include: logging.yml
+  tags:
+    - logrotate
+    - logging

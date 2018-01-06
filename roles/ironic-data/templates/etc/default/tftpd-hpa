@@ -1,0 +1,6 @@
+# /etc/default/tftpd-hpa
+
+TFTP_USERNAME="tftp"
+TFTP_DIRECTORY="{{ ironic.tftpboot_path }}"
+TFTP_ADDRESS="{{ ironic.tftp_server }}:69"
+TFTP_OPTIONS="--map-file /{{ ironic.tftpboot_path }}/map-file"

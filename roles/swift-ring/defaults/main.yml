@@ -1,0 +1,6 @@
+---
+swift_ring:
+  ring_definition_file: "{{ ursula_env_path }}/ring_definition.yml"
+  mode: "bootstrap"
+  iterations: 10
+  outdir: "/etc/swift"

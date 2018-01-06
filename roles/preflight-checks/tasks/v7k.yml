@@ -1,0 +1,35 @@
+---
+- name: ensure v7k.users is define
+  assert:
+    that: "v7k.users is defined"
+    msg: "v7k.users must be defined because v7k is enabled"
+
+- name: ensure v7k.management_ip is define
+  assert:
+    that: "v7k.management_ip is defined"
+    msg: "v7k.management_ip must be defined because v7k is enabled"
+
+- name: ensure v7k.users.cinder.ssh_pvt_key is define
+  assert:
+    that: "v7k.users.cinder.ssh_pvt_key is defined"
+    msg: "v7k.users.cinder.ssh_pvt_key must be defined because v7k is enabled"
+
+- name: ensure v7k.users.cinder.name is define
+  assert:
+    that: "v7k.users.cinder.name is defined"
+    msg: "v7k.users.cinder.name must be defined because v7k is enabled"
+
+- name: ensure v7k.users.monitoring.ssh_pvt_key is define
+  assert:
+    that: "v7k.users.monitoring.ssh_pvt_key is defined"
+    msg: "v7k.users.monitoring.ssh_pvt_key must be defined because v7k is enabled"
+
+- name: ensure v7k.users.monitoring.name is define
+  assert:
+    that: "v7k.users.monitoring.name is defined"
+    msg: "v7k.users.monitoring.name must be defined because v7k is enabled"
+
+- name: ensure v7k.storage_pools is define
+  assert:
+    that: "v7k.storage_pools is defined"
+    msg: "v7k.storage_pools must be defined because v7k is enabled"

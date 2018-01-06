@@ -1,0 +1,53 @@
+---
+- hosts: controller
+  any_errors_fatal: true
+  tasks:
+    - name: check galera cluster size
+      shell: mysql -e "SHOW STATUS LIKE'%wsrep_cluster_size%'" | grep 3
+
+    - name: determine if it's a secondary node
+      shell: ip a | grep ucarp > /dev/null 2>&1
+      register: ucarp_result
+      ignore_errors: true
+
+    - name: stop mysql service on secondary node
+      service: name=mysql state=stopped 
+      when: ucarp_result.rc == 1
+
+    - name: clean existing gcache.page files on secondary node
+      shell: rm -rf /var/lib/mysql/gcache.page.*
+      when: ucarp_result.rc == 1
+
+    - name: start mysql service on secondary node
+      service: name=mysql state=started 
+      when: ucarp_result.rc == 1
+
+    - name: wait 2 minutes for data sync catch up
+      pause: minutes=2
+
+    - name: check galera cluster size
+      shell: mysql -e "SHOW STATUS LIKE'%wsrep_cluster_size%'" | grep 3
+
+    - name: find ucarp PID on primary node
+      shell: pidof ucarp
+      register: ucarp_pid
+      when: ucarp_result.rc == 0
+
+    - name: trigger ucarp failover on primary node
+      shell: kill -USR2 {{ ucarp_pid.stdout }}
+      when: ucarp_result.rc == 0
+
+    - name: stop mysql service on primary node
+      service: name=mysql state=stopped 
+      when: ucarp_result.rc == 0
+
+    - name: clean existing gcache.page files on primary node
+      shell: rm -rf /var/lib/mysql/gcache.page.*
+      when: ucarp_result.rc == 0
+
+    - name: start mysql service on primary node
+      service: name=mysql state=started 
+      when: ucarp_result.rc == 0
+
+    - name: check galera cluster size
+      shell: mysql -e "SHOW STATUS LIKE'%wsrep_cluster_size%'" | grep 3

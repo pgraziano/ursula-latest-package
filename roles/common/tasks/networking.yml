@@ -1,0 +1,174 @@
+---
+- name: Disable NetworkManager
+  service: name=NetworkManager state=stopped enabled=no
+  failed_when: false
+  when: ursula_os == 'rhel'
+
+- block:
+  - name: set network config dir path - ubuntu
+    set_fact:
+      network_dir_path: /etc/network/interfaces.d
+    when: ursula_os == 'ubuntu'
+
+  - name: set network dir path - rhel
+    set_fact:
+      network_dir_path: /etc/sysconfig/network-scripts
+    when: ursula_os == 'rhel'
+
+  - name: network interfaces file - ubuntu
+    copy:
+      content: "{{ network_interfaces }}"
+      dest: /etc/network/interfaces
+      force: yes
+      owner: root
+      group: root
+      mode: 0644
+    when:
+      - ursula_os == 'ubuntu'
+      - network_interfaces is defined
+  tags: ['prereboot']
+
+- block:
+  - name: create interfaces.d directory if multiple interface files
+    file:
+      state: directory
+      path: "{{ network_dir_path }}"
+      mode: 0755
+    when:
+      - ursula_os == 'ubuntu'
+
+  - name: remove unnecessary network config
+    file:
+      path: "{{ network_dir_path }}/{{ item.filename }}"
+      state: absent
+    when:
+      - item.state is defined
+      - item.state == 'absent'
+    with_items: "{{ network_interfaces_d | default([]) }}"
+
+  - name: append network config
+    blockinfile:
+      dest: "{{ network_dir_path }}/{{ item.filename }}"
+      block: "{{ item.contents }}"
+    when:
+      - item.state is defined
+      - item.state == 'append'
+    with_items: "{{ network_interfaces_d | default([]) }}"
+
+  - name: copy network config
+    copy:
+      content: "{{ item.contents }}"
+      dest: "{{ network_dir_path }}/{{ item.filename }}"
+      force: yes
+      owner: root
+      group: root
+      mode: 0644
+    when:
+      - item.state is undefined or item.state == 'present'
+    with_items: "{{ network_interfaces_d | default([]) }}"
+
+  when: network_interfaces_d is defined
+  tags: ['prereboot']
+
+- include: ucarp.yml
+  when:
+    - ursula_os == 'rhel'
+    - network.ucarp.config|length > 0
+  tags: ['prereboot']
+
+#Set gateway for each undercloud_cidr subnet. gateway is a member of undercloud_cidr list for every subnet.
+#Each host can belong to only one undercloud_cidr, so there will be only one nw_gw set per host.
+- name: set gateway address for multi subnet
+  set_fact: nw_gw={{ item.gateway }}
+  when: (update_routes|default('false')|bool) and ((ansible_default_ipv4.network ==  ( item.cidr | ipaddr('network') )))
+  with_items: "{{ undercloud_cidr }}"
+
+#Add or replace a static route to all undercloud_cidr subnets via the nw_gw of the current subnet.
+- name: add static route for multi subnet
+  command: "/sbin/ip route replace {{ item.cidr }} via {{ nw_gw }}"
+  when: (update_routes|default('false')|bool) and (not (ansible_default_ipv4.network ==  ( item.cidr | ipaddr('network') )))
+  with_items: "{{ undercloud_cidr }}"
+
+- block:
+  - name: Check if interface has its own config file
+    stat: path=/etc/network/interfaces.d/{{ ansible_default_ipv4.interface }}.cfg
+    register: found_in_interfaces_d
+
+  - name: Set network config file
+    set_fact: nw_config_file=/etc/network/interfaces.d/{{ ansible_default_ipv4.interface }}.cfg
+    when: found_in_interfaces_d.stat.exists is defined and found_in_interfaces_d.stat.exists
+
+  - name: Set network config file
+    set_fact: nw_config_file="/etc/network/interfaces"
+    when: not found_in_interfaces_d.stat.exists|bool
+
+  #Check if the static routes are present in interface configuration file, so that they are persistant across reboots.
+  - name: Check for static routes in {{ nw_config_file }}
+    command: "grep -h 'ip route add {{ item.cidr }} via {{ nw_gw }}' {{ nw_config_file }}"
+    with_items: "{{ undercloud_cidr }}"
+    changed_when: False
+    when: ansible_default_ipv4.network  != ( item.cidr | ipaddr('network'))
+  when: ursula_os == 'ubuntu' and (update_routes|default('false')|bool)
+
+- block:
+  - name: Check if route configuration exists
+    stat: path=/etc/sysconfig/network-scripts/route-{{ ansible_default_ipv4.interface }}
+    register: found_in_routes
+
+  - name: Set routes config file
+    set_fact: route_config_file=/etc/sysconfig/network-scripts/route-{{ ansible_default_ipv4.interface }}
+    when: found_in_routes.stat.exists is defined and found_in_routes.stat.exists
+
+  #Check if the static routes are present in routes configuration file, so that they are persistant across reboots.
+  - name: Check for static routes in {{ route_config_file }}
+    command: "grep -h '{{ item.cidr }} via {{ nw_gw }}' {{ route_config_file }}"
+    with_items: "{{ undercloud_cidr }}"
+    changed_when: False
+    when: ansible_default_ipv4.network  != ( item.cidr | ipaddr('network'))
+  when: ursula_os == 'rhel' and (update_routes|default('false')|bool)
+
+- name: hosts file
+  template: src=etc/hosts dest=/etc/hosts owner=root group=root mode=0644
+            backup=yes
+  tags: etc_hosts
+
+- name: netfilter tuning
+  template: src=etc/sysctl.d/60-netfilter-tuning.conf
+            dest=/etc/sysctl.d/60-netfilter-tuning.conf owner=root group=root
+            mode=0644
+  notify:
+    - apply-sysctl
+
+- name: tcp tuning
+  template: src=etc/sysctl.d/60-tcp-tuning.conf
+            dest=/etc/sysctl.d/60-tcp-tuning.conf owner=root group=root
+            mode=0644
+  changed_when: true
+  notify:
+    - apply-sysctl
+
+- name: ipv6 privacy
+  lineinfile: dest=/etc/sysctl.d/10-ipv6-privacy.conf
+              regexp="{{ item.value.regex }}"
+              line="{{ item.value.line }}"
+              create=true
+  notify:
+    - apply-sysctl
+  with_dict:
+    alluse:
+      regex: '^net\.ipv6\.conf\.all\.use_tempaddr'
+      line: "net.ipv6.conf.all.use_tempaddr = 0"
+    defaultuse:
+      regex: '^net\.ipv6\.conf\.default\.use_tempaddr'
+      line: "net.ipv6.conf.default.use_tempaddr = 0"
+
+- name: Disable IPv6 on all interfaces by default
+  copy: src=etc/sysctl.d/10-disable-ipv6-default.conf
+        dest=/etc/sysctl.d/10-disable-ipv6-default.conf
+        owner=root group=root mode=0644
+  notify:
+  - apply-sysctl
+
+- name: conntrack module
+  template: src=etc/modprobe.d/conntrack.conf
+            dest=/etc/modprobe.d/conntrack.conf owner=root group=root mode=0644

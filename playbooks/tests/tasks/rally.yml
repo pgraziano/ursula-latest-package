@@ -1,0 +1,20 @@
+---
+- name: Running Rally against test cloud
+  hosts: controller[0]
+  tasks:
+    - name: copy basic Rally test profile template into place
+      copy: src=rally/bbc-cloud-validate.yml dest=./bbc-cloud-validate.yml mode=0444
+
+    - name: copy ceph Rally test profile template into place
+      copy: src=rally/bbc-cloud-validate-ceph.yml dest=./bbc-cloud-validate-ceph.yml mode=0444
+      when: cinder.enabled|bool
+
+    - name: run Rally script
+      environment: 
+        DEBIAN_FRONTEND: noninteractive
+      script: ./rally/run.sh -e "{{ cinder.enabled }}" -t "{{ build_tag }}"
+      become: yes
+      become_user: root
+
+    - name: fetch Rally report
+      fetch: src=rally_report.html dest={{ workspace }}/rally_report.html flat=yes

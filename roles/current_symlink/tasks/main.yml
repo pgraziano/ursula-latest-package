@@ -1,0 +1,32 @@
+---
+- name: discover current link
+  stat:
+    path: /opt/openstack/current
+  register: current
+
+- name: discover packages
+  command: ls
+  args:
+    chdir: /opt/openstack/current
+  register: pkgs
+  when: current.stat.islnk|default(False)
+
+- name: remove current link
+  file:
+    path: /opt/openstack/current
+    state: absent
+  when: current.stat.islnk|default(False)
+
+- name: make current dir
+  file:
+    path: /opt/openstack/current
+    state: directory
+  when: current.stat.islnk|default(False)
+
+- name: make package links
+  file:
+    path: /opt/openstack/current/{{ item }}
+    src: "{{ current.stat.lnk_source }}/{{ item }}"
+    state: link
+  when: current.stat.islnk|default(False)
+  with_items: "{{ pkgs.stdout_lines|default([]) }}"

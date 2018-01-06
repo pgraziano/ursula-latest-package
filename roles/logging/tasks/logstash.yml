@@ -1,0 +1,84 @@
+---
+- name: uninstall filebeat
+  package: name=filebeat state=absent
+
+- name: configure rsyslog
+  template: src={{ item }} dest=/etc/rsyslog.d mode=0644
+  with_fileglob: ../templates/etc/rsyslog.d/*
+  notify: restart rsyslog
+
+- name: create logstash user
+  user: name=logstash comment="Logstash Service User" shell=/sbin/nologin system=yes home=/var/lib/logstash
+
+- name: install logstash-forwarder
+  apt: pkg=logstash-forwarder
+  when: logging.install_method == 'apt'
+  register: install_lsf
+  until: install_lsf|succeeded
+  retries: 5
+
+- name: download logstash apt
+  get_url: url={{ logging.download.ubuntu.url }}
+           dest=/tmp/logstash-forwarder_{{ logging.version }}_amd64.deb
+  when: ursula_os == 'ubuntu' and logging.install_method == 'file'
+  register: result
+  until: result|succeeded
+  retries: 5
+
+- name: download logstash yum
+  get_url: url={{ logging.download.rhel.url }}
+           dest=/tmp/logstash-forwarder_{{ logging.version }}.rpm
+  when: ursula_os == 'rhel' and logging.install_method == 'file'
+  register: result
+  until: result|succeeded
+  retries: 5
+
+- name: install logstash apt
+  apt: deb=/tmp/logstash-forwarder_{{ logging.version }}_amd64.deb
+  when: ursula_os == 'ubuntu' and logging.install_method == 'file'
+  register: install_lsf
+  until: install_lsf|succeeded
+  retries: 5
+
+- name: install logstash yum
+  yum: name=/tmp/logstash-forwarder_{{ logging.version }}.rpm
+  when: ursula_os == 'rhel' and logging.install_method == 'file'
+  register: install_lsf
+  until: install_lsf|succeeded
+  retries: 5
+
+- name: stop logstash-forwarder service
+  service: name=logstash-forwarder state=stopped enabled=yes must_exist=false
+  when: ursula_os == 'ubuntu' and install_lsf|changed
+
+- name: install logstash-forwarder service
+  template: src=etc/init/logstash-forwarder.conf dest=/etc/init/logstash-forwarder.conf mode=0644
+  when: ursula_os == 'ubuntu'
+
+- name: remove logstash-forwarder init.d
+  file: dest=/etc/init.d/logstash-forwarder state=absent
+  when: ursula_os == 'ubuntu'
+
+- name: custom cert auth directory
+  file: dest=/usr/local/share/ca-certificates state=directory mode=0755
+  when: logging.forward.host and logging.forward.tls.enabled
+
+- name: (possibly self-signed) ssl cert
+  template: src=logging-forward.crt dest=/usr/local/share/ca-certificates/logging-forward.crt mode=0644
+  notify:
+    - refresh cert auths
+    - restart logstash-forwarder
+  when: logging.forward.host and logging.forward.tls.enabled
+
+- name: logstash-forwarder config directory
+  file: dest=/etc/logstash-forwarder.d state=directory mode=0755
+
+- name: configure logstash-forwarder forwarding
+  template: src=etc/logstash-forwarder.d/main.conf dest=/etc/logstash-forwarder.d/main.conf mode=0644
+  notify: restart logstash-forwarder
+  when: logging.forward.host
+
+- meta: flush_handlers
+
+- name: start and enable logstash-forwarder service
+  service: name=logstash-forwarder state=started enabled=yes

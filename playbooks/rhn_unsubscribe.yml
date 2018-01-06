@@ -1,0 +1,14 @@
+---
+- name: unsubscribe rhel for all nodes
+  hosts: all:!vyatta-*
+  gather_facts: true
+  environment: "{{ env_vars|default({}) }}"
+
+  tasks:
+    - name: unsubscribe from redhat subscription
+      redhat_subscription:
+        state: absent
+      when: ansible_distribution == 'RedHat'
+      register: unsubscribe
+      until: unsubscribe|succeeded
+      retries: 5

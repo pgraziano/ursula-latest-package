@@ -1,0 +1,1 @@
+export PATH="{{ common.python.base_venv }}/bin:/opt/sensu/embedded/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/etc/sensu/plugins"

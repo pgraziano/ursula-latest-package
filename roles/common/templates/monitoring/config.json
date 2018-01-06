@@ -1,0 +1,31 @@
+{
+  "client": {
+    "name": "{{ monitoring.client_name|default(ansible_hostname ~ '.' ~ ansible_domain ~ '-' ~ stack_env|default('unknown_site'), true) }}",
+    "address": "{{ primary_ip }}",
+    "subscriptions": [
+      "openstack"
+    ],
+    "keepalive": {
+      "handler": "{{ monitoring.keepalive.handler }}",
+      "thresholds": {
+        "warning": {{ monitoring.keepalive.thresholds.warning }},
+        "critical": {{ monitoring.keepalive.thresholds.critical }}
+      }
+    }
+  },
+  "rabbitmq": {
+    "host": "{{ monitoring.rabbit.host }}",
+    "port": {{ monitoring.rabbit.port }},
+    "user": "{{ monitoring.rabbit.user }}",
+    "password": "{{ monitoring.rabbit.pass }}",
+    {% if monitoring.client_cert and monitoring.client_key %}
+    "vhost": "{{ monitoring.rabbit.vhost }}",
+    "ssl": {
+      "cert_chain_file": "/etc/sensu/ssl/cert.pem",
+      "private_key_file": "/etc/sensu/ssl/key.pem"
+    }
+    {% else %}
+    "vhost": "{{ monitoring.rabbit.vhost }}"
+    {% endif %}
+  }
+}

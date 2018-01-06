@@ -1,0 +1,13 @@
+---
+percona:
+  replication: True
+  monitoring:
+    sensu_checks:
+      percona_cluster_size:
+        criticality: 'critical'
+  logs:
+    - paths:
+        - /var/log/mysql/*.err
+      fields:
+        type: mysql
+        tags: mysql

@@ -1,0 +1,251 @@
+heat_template_version: 2013-05-23
+
+description: HOT template to deploy Ursula Tests env
+
+# Note: there should be a placeholder line after each "if-else" block to keep the right format of the template
+
+parameters:
+  image:
+    type: string
+    description: Name of image to use for servers
+    default: 11760201-107c-4387-a54f-ec738533d71f
+  flavor:
+    type: string
+    description: Flavor to use for servers
+    default: m1.large
+  network:
+    type: string
+    description: Name of Neutron network into which servers get deployed
+    default: internal
+  floating_ip_pool:
+    type: string
+    description: Name of floating ip pool to use
+    default: external
+  key_name:
+    type: string
+    description: Name of the ssh keypair to use for servers
+    default: centos_key
+  security_group:
+    type: string
+    description: Name of the security group to use for servers
+    default: centos_ursula
+  az:
+    type: string
+    description: Name of availability-zone to use for servers
+    default: dev_compute_standard
+  controller-0_name:
+    type: string
+    description: Name of controller-0 server
+    default: controller-0
+  controller-1_name:
+    type: string
+    description: Name of controller-1 server
+    default: controller-1
+  compute-0_name:
+    type: string
+    description: Name of compute-0 server
+    default: compute-0
+
+resources:
+
+  server_security_group:
+    type: OS::Neutron::SecurityGroup
+    properties:
+      description: Security group for servers of Ursula Tests
+      name: { get_param: security_group }
+      rules:
+        - remote_ip_prefix: 0.0.0.0/0
+          protocol: tcp
+          port_range_min: 22
+          port_range_max: 22
+        - remote_ip_prefix: 0.0.0.0/0
+          protocol: tcp
+          port_range_min: 80
+          port_range_max: 80
+        - remote_ip_prefix: 0.0.0.0/0
+          protocol: tcp
+          port_range_min: 443
+          port_range_max: 443
+        - remote_ip_prefix: 0.0.0.0/0
+          protocol: tcp
+          port_range_min: 35357
+          port_range_max: 35357
+        - remote_ip_prefix: 0.0.0.0/0
+          protocol: tcp
+          port_range_min: 5000
+          port_range_max: 5000
+        - remote_ip_prefix: 0.0.0.0/0
+          protocol: tcp
+          port_range_min: 5001
+          port_range_max: 5001
+        - remote_ip_prefix: 0.0.0.0/0
+          protocol: tcp
+          port_range_min: 4789
+          port_range_max: 4789
+        - remote_ip_prefix: 0.0.0.0/0
+          protocol: tcp
+          port_range_min: 8004
+          port_range_max: 8004
+        - remote_ip_prefix: 0.0.0.0/0
+          protocol: tcp
+          port_range_min: 8001
+          port_range_max: 8001
+        - remote_ip_prefix: 0.0.0.0/0
+          protocol: tcp
+          port_range_min: 8042
+          port_range_max: 8042
+        - remote_ip_prefix: 0.0.0.0/0
+          protocol: tcp
+          port_range_min: 6080
+          port_range_max: 6080
+        - remote_ip_prefix: 0.0.0.0/0
+          protocol: tcp
+          port_range_min: 8774
+          port_range_max: 8774
+        - remote_ip_prefix: 0.0.0.0/0
+          protocol: tcp
+          port_range_min: 8778
+          port_range_max: 8778
+        - remote_ip_prefix: 0.0.0.0/0
+          protocol: tcp
+          port_range_min: 9311
+          port_range_max: 9311 
+        - remote_ip_prefix: 0.0.0.0/0
+          protocol: tcp
+          port_range_min: 8776
+          port_range_max: 8776
+        - remote_ip_prefix: 0.0.0.0/0
+          protocol: tcp
+          port_range_min: 8777
+          port_range_max: 8777
+        - remote_ip_prefix: 0.0.0.0/0
+          protocol: tcp
+          port_range_min: 9393
+          port_range_max: 9393
+        - remote_ip_prefix: 0.0.0.0/0
+          protocol: tcp
+          port_range_min: 9292
+          port_range_max: 9292
+        - remote_ip_prefix: 0.0.0.0/0
+          protocol: tcp
+          port_range_min: 9696
+          port_range_max: 9696
+        - remote_ip_prefix: 0.0.0.0/0
+          protocol: icmp
+        - ethertype: 'IPv4'
+          remote_mode: 'remote_group_id'
+        - ethertype: 'IPv6'
+          remote_mode: 'remote_group_id'
+        - ethertype: IPv4
+          remote_ip_prefix: 192.168.0.0/22
+          protocol: igmp
+        - ethertype: 'IPv4'
+          remote_mode: 'remote_group_id'
+          protocol: tcp
+        - ethertype: 'IPv4'
+          remote_mode: 'remote_group_id'
+          protocol: udp
+        - ethertype: 'IPv4'
+          remote_mode: 'remote_group_id'
+
+  ssh_keypair:
+    type: OS::Nova::KeyPair
+    properties:
+      save_private_key: true
+      name: { get_param: key_name }
+
+  controller-0:
+    type: OS::Nova::Server
+    properties:
+      name: { get_param: controller-0_name }
+      image: { get_param: image }
+      flavor: { get_param: flavor }
+      key_name: { get_resource: ssh_keypair }
+      user_data_format: RAW
+      security_groups: [{ get_resource: server_security_group }]
+      networks:
+        - network: { get_param: network }
+      availability_zone: { get_param: az }
+      # placeholder line
+
+  controller-1:
+    type: OS::Nova::Server
+    properties:
+      name: { get_param: controller-1_name }
+      image: { get_param: image }
+      flavor: { get_param: flavor }
+      key_name: { get_resource: ssh_keypair }
+      user_data_format: RAW
+      security_groups: [{ get_resource: server_security_group }]
+      networks:
+        - network: { get_param: network }
+      availability_zone: { get_param: az }
+      # placeholder line
+
+  compute-0:
+    type: OS::Nova::Server
+    properties:
+      name: { get_param: compute-0_name }
+      image: { get_param: image }
+      flavor: { get_param: flavor }
+      key_name: { get_resource: ssh_keypair }
+      user_data_format: RAW
+      security_groups: [{ get_resource: server_security_group }]
+      networks:
+        - network: { get_param: network }
+      availability_zone: { get_param: az }
+      # placeholder line
+
+
+### Floating IP resources and associations for servers
+#  controller-0_floating_ip:
+#     type: OS::Nova::FloatingIP
+#     properties:
+#       pool: { get_param: floating_ip_pool }
+#
+#  controller-0_fip_association:
+#     type: OS::Nova::FloatingIPAssociation
+#     properties:
+#       floating_ip: { get_resource: controller-0_floating_ip }
+#       server_id: { get_resource: controller-0 }
+#
+#  controller-1_floating_ip:
+#     type: OS::Nova::FloatingIP
+#     properties:
+#       pool: { get_param: floating_ip_pool }
+#
+#  controller-1_fip_association:
+#     type: OS::Nova::FloatingIPAssociation
+#     properties:
+#       floating_ip: { get_resource: controller-1_floating_ip }
+#       server_id: { get_resource: controller-1 }
+#
+#  compute-0_floating_ip:
+#     type: OS::Nova::FloatingIP
+#     properties:
+#       pool: { get_param: floating_ip_pool }
+#
+#  compute-0_fip_association:
+#     type: OS::Nova::FloatingIPAssociation
+#     properties:
+#       floating_ip: { get_resource: compute-0_floating_ip }
+#       server_id: { get_resource: compute-0 }
+
+outputs:
+  private_key:
+    description: Private key
+    value: { get_attr: [ ssh_keypair, private_key ] }
+
+  controller-0:
+    description: IP address of controller-0
+    value: { get_attr: [ controller-0, first_address ] }
+  controller-1:
+    description: IP address of controller-1
+    value: { get_attr: [ controller-1, first_address ] }
+  compute-0:
+    description: IP address of compute-0
+    value: { get_attr: [ compute-0, first_address ] }
+#  floating_ip:
+#    description: Floating IP address of controller-0
+#    value: { get_attr: [ controller-0_floating_ip, ip ] }
+  # placeholder line

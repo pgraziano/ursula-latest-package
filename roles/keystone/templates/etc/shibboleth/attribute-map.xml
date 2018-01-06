@@ -1,0 +1,5 @@
+<Attributes xmlns="urn:mace:shibboleth:2.0:attribute-map" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+{% for attribute in keystone.federation.sp.saml.providers[0].attributes -%}
+    <Attribute name="{{ attribute.name }}" id="{{ attribute.id }}" {% if attribute.format is defined -%}nameFormat="{{ attribute.format }}"{%- endif-%}/>
+{% endfor %}
+</Attributes>

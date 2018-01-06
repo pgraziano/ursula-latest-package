@@ -1,0 +1,229 @@
+---
+- block:
+  - name: "Install or remove openstack-neutron-lbaas-ui"
+    yum:
+      name: openstack-neutron-lbaas-ui
+      state: "{{ (neutron.lbaas.enabled | bool) | ternary('present', 'absent') }}"
+    register: yum_package
+    until: yum_package|succeeded
+    retries: 5
+    notify:
+      - restart apache
+
+  - name: remove _1480_project_loadbalancersv2_panel.py
+    file: path=/usr/share/openstack-dashboard/openstack_dashboard/local/enabled/_1480_project_loadbalancersv2_panel.py
+          state=absent
+
+  - name: remove _1480_project_loadbalancersv2_panel.pyc
+    file: path=/usr/share/openstack-dashboard/openstack_dashboard/local/enabled/_1480_project_loadbalancersv2_panel.pyc
+          state=absent
+  when: openstack_install_method == 'distro'
+
+- name: lesscpy must be in apache PATH
+  pip: name=lesscpy version=0.9j
+  register: result
+  until: result|succeeded
+  retries: 5
+
+- name: horizon local settings
+  template:
+    src: "etc/openstack-dashboard/__init__.py"
+    dest: "/etc/openstack-dashboard/__init__.py"
+    mode: 0640
+    owner: "root"
+    group: "root"
+  notify:
+    - reload apache
+
+- name: horizon local settings
+  template:
+    src: "etc/openstack-dashboard/local_settings.py"
+    dest: "/etc/openstack-dashboard/local_settings.py"
+    mode: 0640
+    owner: "root"
+    group: "{{ openstack_meta.apache[ursula_os].group }}"
+  notify:
+    - reload apache
+
+- name: create static assets directory (source)
+  file: dest="{{ horizon.horizon_lib_dir }}/lib/python2.7/site-packages/openstack_dashboard/{{ item }}"
+        owner="{{ openstack_meta.apache[ursula_os].user }}" group="{{ openstack_meta.apache[ursula_os].group }}" state=directory
+  with_items:
+    - static
+    - static/dashboard
+    - static/img
+    - static/dashboard/fonts
+  when: openstack_install_method == 'source'
+
+- name: custom horizon logo
+  get_url:
+    url: "{{ item.url }}"
+    dest: "{{ (openstack_install_method != 'distro') |
+          ternary('%s/lib/python2.7/site-packages/openstack_dashboard/static/dashboard/%s'
+          % (horizon.horizon_lib_dir,item.name),'%s/openstack_dashboard/static/dashboard/%s'
+          % (horizon.rhel_lib_dir,item.name) ) }}"
+    force: True
+  with_items:
+    - { name: img/logo.png, url: "{{ horizon.logo_url|default('') }}"  }
+    - { name: img/logo-splash.png, url: "{{ horizon.logo_url|default('') }}" }
+    - { name: img/favicon.ico, url: "{{ horizon.favicon_url|default('') }}" }
+  when:
+    - horizon.logo_url is defined
+    - horizon.favicon_url is defined
+
+# Ubuntu horizon config
+- block:
+  - name: enable apache modules
+    apache2_module: state=present name="{{ item }}"
+    with_items:
+      - alias
+      - headers
+    notify:
+      - reload apache
+
+  - name: remove custom headers config
+    file: path=/etc/apache2/mods-enabled/headers.conf
+          state=absent
+    notify:
+      - reload
+
+  - name: openstack dashboard config
+    template: src=etc/apache2/sites-available/openstack_dashboard.conf
+              dest=/etc/apache2/sites-available/openstack_dashboard.conf
+    notify:
+      - reload apache
+
+  - name: enable horizon apache site
+    apache2_site: name=openstack_dashboard state=present
+    notify:
+      - reload apache
+
+  - name: Enable/Disable lbaas dashboard (ubuntu)
+    file:
+      src: "{{ horizon.horizon_lib_dir }}/lib/python2.7/site-packages/neutron_lbaas_dashboard/enabled/_1481_project_ng_loadbalancersv2_panel.py"
+      path: "{{ horizon.horizon_lib_dir }}/lib/python2.7/site-packages/openstack_dashboard/local/enabled/_1481_project_ng_loadbalancersv2_panel.py"
+      state: "{{ (neutron.lbaas.enabled | bool) | ternary('link', 'absent') }}"
+    notify: reload apache
+  when: ursula_os == 'ubuntu'
+
+# RHEL OSP horizon config
+- block:
+  - name: rcue settings file exists (rhel osp)
+    stat:
+      path: /etc/openstack-dashboard/local_settings.d/_11_rcue_theme.py
+    register: rcue
+    when:
+      - horizon.customize|default('False')|bool
+
+  - name: Disable OSP custom dashboard (rhel osp)
+    command: mv /etc/openstack-dashboard/local_settings.d/_11_rcue_theme.py /etc/openstack-dashboard/local_settings.d/_11_rcue_theme.disabled
+    when:
+      - horizon.customize|default('False')|bool
+      - ursula_os == 'rhel'
+      - rcue.stat.exists == True
+    notify: restart apache
+
+  - name: rcue disabled file exists (rhel osp)
+    stat:
+      path: /etc/openstack-dashboard/local_settings.d/_11_rcue_theme.disabled
+    register: rcued
+    when:
+      - not horizon.customize|default('False')|bool
+      - ursula_os == 'rhel'
+
+  - name: Enable OSP custom dashboard (rhel osp)
+    command: mv /etc/openstack-dashboard/local_settings.d/_11_rcue_theme.disabled /etc/openstack-dashboard/local_settings.d/_11_rcue_theme.py
+    when:
+      - not horizon.customize|default('False')|bool
+      - ursula_os == 'rhel'
+      - rcued.stat.exists == True
+    notify: restart apache
+
+  - name: openstack dashboard config (rhel osp)
+    template: src=etc/httpd/conf.d/openstack-dashboard.conf
+              dest=/etc/httpd/conf.d/openstack-dashboard.conf
+    notify:
+      - reload apache
+
+  - name: link local settings to /etc/openstack-dashboard
+    file: src=/etc/openstack-dashboard/local_settings.py
+          dest=/usr/share/openstack-dashboard/openstack_dashboard/local/local_settings.py
+          owner=root
+          group="{{ openstack_meta.apache[ursula_os].user }}"
+          mode=0644
+          state=link
+  when: openstack_install_method == 'distro'
+
+- name: openstack dashboard config (centos)
+  template: src=etc/apache2/sites-available/openstack_dashboard.conf
+            dest=/etc/httpd/conf.d/openstack_dashboard.conf
+  when:
+    - ursula_os == 'rhel'
+    - openstack_install_method == 'source'
+  notify:
+    - reload apache
+
+# package/source horizon config
+- block:
+  - name: add local_settings to venv
+    file: src=/etc/openstack-dashboard/local_settings.py
+          dest=/opt/openstack/current/horizon/lib/python2.7/site-packages/openstack_dashboard/local/local_settings.py
+          owner=root
+          group="{{ openstack_meta.apache[ursula_os].user }}"
+          mode=0644
+          state=link
+
+  - name: gather static assets from openstack install (source)
+    environment:
+      DJANGO_SETTINGS_MODULE: 'openstack_dashboard.settings'
+      PYTHONPATH: "$PYTHONPATH"
+    shell: "{{ item }}"
+    with_items:
+      - "{{ horizon.horizon_lib_dir }}/bin/django-admin.py collectstatic --noinput"
+      - "{{ horizon.horizon_lib_dir }}/bin/django-admin.py compress --force"
+
+  - name: compile localized messages for horizon
+    environment:
+      DJANGO_SETTINGS_MODULE: 'openstack_dashboard.settings'
+      PYTHONPATH: "$PYTHONPATH"
+    shell: "{{ horizon.horizon_lib_dir }}/bin/django-admin.py compilemessages"
+    args:
+      chdir: "{{ horizon.horizon_lib_dir }}/lib/python2.7/site-packages"
+
+  when: openstack_install_method != 'distro'
+
+# Use custom policy to allow cloud_admin admin panel access
+- name: set horizon keystone policy fact
+  set_fact: policy_for_horizon=True
+  when: horizon.customize|default('False')|bool
+
+- name: trigger restart on upgrades
+  debug:
+    msg: "Triggering service restart for upgrade"
+  changed_when: True
+  notify: restart apache
+  when:
+    - code_has_changed | default('False') | bool
+    - upgrade | default('False') | bool
+
+- meta: flush_handlers
+
+- name: ensure apache started
+  service: name="{{ apache.service_name[ursula_os] }}" state=started
+  when: ursula_os == 'ubuntu'
+
+- meta: flush_handlers
+
+- name: ensure apache is enabled
+  service: name="{{ apache.service_name[ursula_os] }}" state=started enabled=true
+
+- include: monitoring.yml
+  tags:
+    - monitoring
+    - common
+  when: monitoring.enabled|default('True')|bool
+
+- include: logging.yml
+  tags:
+    - logrotate
+    - logging

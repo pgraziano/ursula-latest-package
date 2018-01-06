@@ -1,0 +1,7 @@
+---
+- name: restart auditd
+  service: name=auditd state=restarted
+
+- name: generate audit.rules
+  command: augenrules --load
+  notify: restart auditd

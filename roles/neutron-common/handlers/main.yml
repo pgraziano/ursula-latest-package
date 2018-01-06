@@ -1,0 +1,13 @@
+---
+- name: restart neutron services
+  service: name={{ item.name }} state=restarted_if_running must_exist=false
+  when: restart|default(True)
+  failed_when: false
+  with_items:
+    - "{{ neutron.services.neutron_server }}"
+    - "{{ neutron.services.neutron_dhcp_agent }}"
+    - "{{ neutron.services.neutron_l3_agent }}"
+    - "{{ neutron.services.neutron_openvswitch_agent }}"
+    - "{{ neutron.services.neutron_linuxbridge_agent }}"
+    - "{{ neutron.services.neutron_metadata_agent }}"
+    - "{{ neutron.services.neutron_lbaasv2_agent }}"

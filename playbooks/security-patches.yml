@@ -1,0 +1,17 @@
+---
+- hosts: all:!vyatta-*
+  tasks:
+  - apt: update_cache=yes cache_valid_time=3600
+  - name: Patch CVE-2014-0160 & CVE-2014-0224 & CVE-2015-3281
+    apt: pkg={{ item }} state=latest
+    with_items:
+      - libssl1.0.0
+      - openssl
+      - haproxy
+    notify: restart haproxy
+    register: result
+    until: result|succeeded
+    retries: 5
+  handlers:
+  - name: restart haproxy
+    shell: service haproxy status && service haproxy restart || true

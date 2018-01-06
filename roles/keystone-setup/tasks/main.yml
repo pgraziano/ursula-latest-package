@@ -1,0 +1,159 @@
+---
+- name: keystone bootstrap user
+  command: keystone-manage bootstrap
+  failed_when: false
+  environment:
+    OS_BOOTSTRAP_USERNAME: "{{ keystone.bootstrap.user }}"
+    OS_BOOTSTRAP_PASSWORD: "{{ keystone.bootstrap.password }}"
+    OS_BOOTSTRAP_PROJECT_NAME: "{{ keystone.bootstrap.project }}"
+    OS_BOOTSTRAP_ROLE_NAME: "{{ keystone.bootstrap.role }}"
+    OS_BOOTSTRAP_ADMIN_URL: "{{ endpoints.keystone.url.admin }}/"
+    OS_BOOTSTRAP_INTERNAL_URL: "{{ endpoints.keystone.url.internal }}/"
+    OS_BOOTSTRAP_PUBLIC_URL: "{{ endpoints.keystone.url.public }}/"
+    OS_BOOTSTRAP_SERVICE_NAME: "{{ 'keystone' }}"  # otherwise it uses the keystone variable
+    OS_BOOTSTRAP_REGION_ID: "RegionOne"
+
+- name: keystone tenants
+  environment:
+    OS_IDENTITY_API_VERSION: 3
+    PYTHONPATH: "{{ basevenv_lib_dir|default(omit) }}"
+  os_project:
+    name: "{{ item }}"
+    description: "{{ item }} tenant"
+    domain: default
+    validate_certs: "{{ validate_certs|default(omit) }}"
+    auth:
+      auth_url: "{{ endpoints.keystone.url.internal }}/v3"
+      project_name: admin
+      project_domain_name: default
+      user_domain_name: default
+      username: admin
+      password: "{{ secrets.admin_password }}"
+  with_items: "{{ keystone.tenants }}"
+  register: result
+  until: result|succeeded
+  retries: 5
+  delay: 10
+
+# Putting user and project name in env works around a bug in openstack
+# modules, where the contents of the auth dict are considered no_log, so
+# users with "admin" somewhere in the name would be masked out of the facts.
+- name: get the current keystone users (requires Ansible >= 2.1)
+  environment:
+    OS_IDENTITY_API_VERSION: 3
+    OS_USERNAME: admin
+    OS_PROJECT_NAME: admin
+    PYTHONPATH: "{{ basevenv_lib_dir|default(omit) }}"
+  os_user_facts:
+    validate_certs: "{{ validate_certs|default(omit) }}"
+    auth:
+      auth_url: "{{ endpoints.keystone.url.internal }}/v3"
+      password: "{{ secrets.admin_password }}"
+      project_domain_name: default
+      user_domain_name: default
+  register: result
+  until: result|succeeded
+  retries: 5
+  delay: 10
+
+- name: keystone users
+  environment:
+    OS_IDENTITY_API_VERSION: 3
+    PYTHONPATH: "{{ basevenv_lib_dir|default(omit) }}"
+  os_user:
+    name: "{{ item.name }}"
+    password: "{{ item.password }}"
+    default_project: "{{ item.tenant }}"
+    domain: default
+    validate_certs: "{{ validate_certs|default(omit) }}"
+    auth:
+      auth_url: "{{ endpoints.keystone.url.internal }}/v3"
+      project_name: admin
+      project_domain_name: default
+      user_domain_name: default
+      username: admin
+      password: "{{ secrets.admin_password }}"
+  with_items: "{{ keystone.users }}"
+  # If the username is not cloud_admin or monitor, create/update user.
+  # If the name is cloud_admin or monitor, and the user does not exist, create user.
+  when: "item.name not in ['cloud_admin', 'monitor'] or
+         (item.name in ['cloud_admin', 'monitor'] and item.name not in openstack_users|map(attribute='name')|list)"
+  register: result
+  until: result|succeeded
+  retries: 5
+  delay: 10
+
+- name: keystone roles
+  environment:
+    OS_IDENTITY_API_VERSION: 3
+    PYTHONPATH: "{{ basevenv_lib_dir|default(omit) }}"
+  os_keystone_role:
+    name: "{{ item }}"
+    validate_certs: "{{ validate_certs|default(omit) }}"
+    auth:
+      auth_url: "{{ endpoints.keystone.url.internal }}/v3"
+      project_name: admin
+      project_domain_name: default
+      user_domain_name: default
+      username: admin
+      password: "{{ secrets.admin_password }}"
+  with_items: "{{ keystone.roles }}"
+  register: result
+  until: result|succeeded
+  retries: 5
+  delay: 10
+
+- name: keystone user roles
+  environment:
+    OS_IDENTITY_API_VERSION: 3
+    PYTHONPATH: "{{ basevenv_lib_dir|default(omit) }}"
+  os_user_role:
+    role: "{{ item.role }}"
+    user: "{{ item.user }}"
+    project: "{{ item.tenant }}"
+    validate_certs: "{{ validate_certs|default(omit) }}"
+    auth:
+      auth_url: "{{ endpoints.keystone.url.internal }}/v3"
+      project_name: admin
+      project_domain_name: default
+      user_domain_name: default
+      username: admin
+      password: "{{ secrets.admin_password }}"
+  with_items: "{{ keystone.user_roles }}"
+  register: result
+  until: result|succeeded
+  retries: 5
+  delay: 10
+
+# This task is added separately as to not change the format in the
+# defaults-2.0.yml file, as that would be backwards incompatible.
+# The admin user needs admin role on the domain itself in keystonev3,
+# in particular to see the Domains tab in Horizon.
+- name: grant admin domain admin rights
+  environment:
+    OS_IDENTITY_API_VERSION: 3
+    PYTHONPATH: "{{ basevenv_lib_dir|default(omit) }}"
+  os_user_role:
+    role: admin
+    user: admin
+    domain: default
+    validate_certs: "{{ validate_certs|default(omit) }}"
+    auth:
+      auth_url: "{{ endpoints.keystone.url.internal }}/v3"
+      project_name: admin
+      project_domain_name: default
+      user_domain_name: default
+      username: admin
+      password: "{{ secrets.admin_password }}"
+  register: result
+  until: result|succeeded
+  retries: 5
+  delay: 10
+
+- include: federation.yml
+  when: keystone.federation.enabled|bool
+  tags:
+    - keystone-federation
+
+- include: ldap.yml
+  when: keystone.ldap_domain.enabled|default('False')|bool

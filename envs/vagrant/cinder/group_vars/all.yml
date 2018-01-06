@@ -1,0 +1,30 @@
+---
+stack_env: vagrant
+floating_ip: 10.1.1.100
+
+xtradb:
+  sst_auth_password: asdf
+
+percona:
+  replication: False
+
+nova:
+  scheduler_default_filters: AvailabilityZoneFilter,ComputeFilter
+
+cinder:
+  enabled: True
+  volume_type: device
+  volume_device: /dev/sdb
+  encryption:
+    enabled: true
+    fixed_key: 6a5c55db5e250f234b6af7807dafda77433dddcf372b6d04801a45f578a35aa7
+  logging:
+    debug: True
+    verbose: True
+  volume_types: []
+  encrypted_volume_types:
+    - volume_type: encrypted-aes-512
+      cipher: aes-xts-plain64
+      key_size: 512
+      provider: nova.volume.encryptors.luks.LuksEncryptor
+      control_location: front-end

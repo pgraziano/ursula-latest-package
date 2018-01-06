@@ -1,0 +1,38 @@
+---
+dependencies:
+  - role: openstack-meta
+  - role: endpoints
+  - role: inspec
+    install_inspec_controls: [aodh]
+    tags: inspec
+    when:
+      - inspec.enabled|bool
+      - inspec.controls.aodh.enabled|bool
+  - role: openstack-source
+    project_name: aodh
+    project_rev: "{{ aodh.source.rev }}"
+    alternatives: "{{ aodh.alternatives }}"
+    system_dependencies: "{{ aodh.source.system_dependencies }}"
+    python_dependencies: "{{ aodh.source.python_dependencies }}"
+    upper_constraints: "{{ aodh.source.upper_constraints }}"
+    when: openstack_install_method == 'source'
+  - role: openstack-package
+    project_name: aodh
+    alternatives: "{{ aodh.alternatives }}"
+    when: openstack_install_method == 'package'
+  - role: monitoring-common
+    when: monitoring.enabled|default(True)|bool
+  - role: logging-config
+    service: aodh
+    logdata: "{{ aodh.logs }}"
+    when: logging.enabled|default('True')|bool
+  - role: openstack-database
+    database_name: aodh
+  - role: openstack-distro
+    project_name: aodh
+    project_packages: "{{ aodh.distro.project_packages }}"
+    when: openstack_install_method == 'distro'
+  - role: openstack-firewall
+    rule_name: aodh
+    rules_type_input:
+      - { protocol: tcp, port: "{{ endpoints.aodh.port.haproxy_api }}" }

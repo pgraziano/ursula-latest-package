@@ -1,0 +1,9 @@
+#!/bin/bash -x
+
+source $(dirname $0)/common
+
+which nova >/dev/null || die "nova client must be present"
+
+which ansible-playbook >/dev/null || die "ansible-playbook must be present"
+
+[ -e ${STACK_RC} ] || die "${STACK_RC} must be present"

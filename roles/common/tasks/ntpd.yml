@@ -1,0 +1,40 @@
+---
+- set_fact:
+    ntpd_service_name: ntp
+  when: ursula_os == 'ubuntu'
+- set_fact:
+    ntpd_service_name: ntpd
+  when: ursula_os == 'rhel'
+
+- name: install ntp package (rhel)
+  yum:
+    pkg: ntp
+  when: ursula_os == 'rhel'
+
+- name: install ntp package (ubuntu)
+  apt:
+    pkg: ntp
+  when: ursula_os == 'ubuntu'
+
+- name: install ntp.conf
+  template:
+    dest: /etc/ntp.conf
+    src: etc/ntp.conf
+    mode: 0644
+    owner: root
+  notify:
+    - restart-ntp
+
+#Needed on rhel to start ntpd on boot
+- name: disable chronyd
+  service:
+    name: 'chronyd'
+    state: stopped
+    enabled: false
+  when: ursula_os == 'rhel'
+
+- name: ntp service enabled
+  service:
+    name: "{{ ntpd_service_name }}"
+    state: started
+    enabled: true

@@ -1,0 +1,459 @@
+---
+- name: gather facts on all hosts
+  hosts: all:!vyatta-*
+  tags: always
+  gather_facts: false
+  become: no
+  tasks:
+    # This forces the gathering of facts from every host in the inventory
+    # even if hosts were --limit'd out.
+    - setup:
+      delegate_to: "{{ item }}"
+      delegate_facts: yes
+      with_items: "{{ groups['all'] }}"
+      when: inventory_hostname == play_hosts[0]
+
+- name: preflight checks
+  hosts: all:!vyatta-*
+  any_errors_fatal: true
+  roles:
+    - role: preflight-checks
+      tags: ['always']
+  environment: "{{ env_vars|default({}) }}"
+
+- name: RedHat Network registration for RedHat hosts
+  hosts: all:!vyatta-*
+  any_errors_fatal: true
+  roles:
+    - role: rhn-subscription
+      tags: ['rhn']
+      when: ansible_distribution == "RedHat" and openstack_install_method == 'distro'
+
+- name: common role for all hosts
+  hosts: all:!vyatta-*
+  any_errors_fatal: true
+  roles:
+    - role: logging
+      tags: ['common', 'logging']
+      when: logging.enabled|default("True")|bool
+    - role: common
+      tags: ['common','common-base']
+    - role: manage-disks
+      tags: ['common', 'manage-disks']
+      when: manage_disks.enabled|default('False')|bool
+    - role: serverspec
+      tags: ['common', 'serverspec']
+      when:
+        - serverspec.enabled|default("False")|bool
+        - ursula_os == 'ubuntu'
+    - role: inspec
+      install_inspec_controls: [rhel7]
+      tags: [common,inspec]
+      when:
+        - inspec.enabled|default("False")|bool
+        - ursula_os == 'rhel'
+    - role: inspec
+      install_inspec_controls: [common]
+      tags: [common,inspec]
+      when: inspec.enabled|default("False")|bool
+    - role: audit
+      tags: ['common', 'logging', 'audit']
+      when: audit.enabled|default('False')|bool
+    - role: collectd-client
+      tags: ['collectd-client','collectd']
+      when: collectd.enabled|default('False')|bool
+  environment: "{{ env_vars|default({}) }}"
+
+- name: security and errata
+  hosts: all:!vyatta-*
+  any_errors_fatal: true
+  roles:
+    - role: security_errata
+      tags: ['common', 'security', 'errata']
+      when: ansible_distribution == 'Ubuntu'
+  environment: "{{ env_vars|default({}) }}"
+
+- name: setup IPv6 router advertisements
+  hosts: controller
+  any_errors_fatal: true
+  roles:
+    - role: ipv6ra
+      tags: ['infra']
+  environment: "{{ env_vars|default({}) }}"
+
+- name: rabbitmq used by openstack
+  hosts: controller
+  any_errors_fatal: true
+  serial: 1 # serial because clustering
+  roles:
+    - role: rabbitmq
+      tags: ['infra', 'rabbitmq']
+  environment: "{{ env_vars|default({}) }}"
+
+- name: install common percona components and gather facts
+  hosts: db
+  any_errors_fatal: true
+  roles:
+    - role: percona-common
+      tags: ['infra', 'percona', 'percona-facts']
+  environment: "{{ env_vars|default({}) }}"
+
+- name: install percona on primary
+  hosts: db[0]
+  any_errors_fatal: true
+  vars:
+    should_bootstrap_as_primary: True
+  roles:
+    - role: percona-server
+      tags: ['infra', 'percona', 'percona-primary']
+  environment: "{{ env_vars|default({}) }}"
+
+- name: install percona on secondaries
+  hosts: db:!db[0]
+  any_errors_fatal: true
+  vars:
+    should_bootstrap_as_primary: False
+  roles:
+    - role: percona-server
+      tags: ['infra', 'percona', 'percona-secondary']
+  environment: "{{ env_vars|default({}) }}"
+
+- name: install percona arbiter
+  hosts: db_arbiter
+  any_errors_fatal: true
+  roles:
+    - role: percona-arbiter
+      tags: ['infra', 'percona']
+  environment: "{{ env_vars|default({}) }}"
+
+- name: configure percona backups on primary
+  hosts: db[0]
+  any_errors_fatal: true
+  roles:
+    - role: percona-backup
+      tags: ['infra', 'percona']
+  environment: "{{ env_vars|default({}) }}"
+
+- name: install mongodb server
+  hosts: mongo_db
+  any_errors_fatal: true
+  roles:
+    - role: mongodb-server
+      tags: ['mongodb', 'mongodb-server']
+      when: ceilometer.enabled|bool
+  environment: "{{ env_vars|default({}) }}"
+
+- name: install mongodb arbiter
+  hosts: mongo_arbiter
+  any_errors_fatal: true
+  roles:
+    - role: mongodb-arbiter
+      tags: ['mongodb', 'mongodb-arbiter']
+      when: ceilometer.enabled|bool
+  environment: "{{ env_vars|default({}) }}"
+
+- name: memcached for keystone and horizon
+  hosts: controller
+  any_errors_fatal: true
+  roles:
+    - role: memcached
+      tags: ['infra','memcached']
+  environment: "{{ env_vars|default({}) }}"
+
+- name: controller haproxy
+  hosts: controller
+  any_errors_fatal: true
+  roles:
+    - role: haproxy
+      haproxy_type: openstack
+      tags: ['haproxy', 'infra']
+      when: haproxy.enabled|bool
+  environment: "{{ env_vars|default({}) }}"
+
+- name: iptables
+  hosts: network
+  any_errors_fatal: true
+  roles:
+    - role: iptables
+      tags: ['iptables', 'infra']
+      when: ansible_distribution in ['Ubuntu']
+  environment: "{{ env_vars|default({}) }}"
+
+- name: ceph monitors
+  hosts: ceph_monitors
+  any_errors_fatal: true
+  roles:
+    - role: ceph-monitor
+      when: ceph.enabled
+      tags: ['ceph', 'ceph-monitor']
+  environment: "{{ env_vars|default({}) }}"
+
+- name: ceph osds
+  hosts: ceph_osds
+  any_errors_fatal: true
+  roles:
+    - role: ceph-osd
+      when: ceph.enabled
+      tags: ['ceph', 'ceph-osd']
+  environment: "{{ env_vars|default({}) }}"
+
+- name: ceph client
+  hosts: controller:cinder_volume:compute
+  any_errors_fatal: true
+  roles:
+    - role: ceph-client
+      when: ceph.enabled
+      tags: ['ceph','ceph-client']
+  environment: "{{ env_vars|default({}) }}"
+
+# OPENSTACK SERVICES
+# # this next play can go away after 2.1.0+ is everywhere
+- name: deal with current symlink
+  hosts: all:!vyatta-*
+  any_errors_fatal: true
+  gather_facts: false
+  roles:
+    - role: current_symlink
+      tags:
+        - openstack
+        - symlink
+  environment: "{{ env_vars|default({}) }}"
+
+- name: openstack client tools
+  hosts: all:!vyatta-*:!ceph_monitors:!ceph_osds
+  any_errors_fatal: true
+  roles:
+    - role: client
+      tags: ['openstack', 'client']
+  environment: "{{ env_vars|default({}) }}"
+
+- name: keystone code and config
+  hosts: controller
+  any_errors_fatal: true
+  roles:
+    - role: keystone
+      tags: ['openstack', 'keystone', 'control']
+  environment: "{{ env_vars|default({}) }}"
+
+- name: keystone setup
+  hosts: controller[0]
+  any_errors_fatal: true
+  roles:
+    - role: keystone-setup
+      tags: ['openstack', 'setup', 'keystone-setup']
+  environment: "{{ env_vars|default({}) }}"
+
+- name: glance code and config
+  hosts: controller
+  any_errors_fatal: true
+  roles:
+    - role: glance
+      tags: ['openstack', 'glance', 'control']
+  environment: "{{ env_vars|default({}) }}"
+
+- name: nova control plane
+  hosts: controller
+  any_errors_fatal: true
+  roles:
+    - role: nova-control
+      tags: ['openstack', 'nova', 'control', 'nova-control']
+  environment: "{{ env_vars|default({}) }}"
+
+- name: nova data plane
+  hosts: compute
+  any_errors_fatal: true
+  roles:
+    - role: nova-data
+      tags: ['openstack', 'nova', 'data', 'nova-data']
+  environment: "{{ env_vars|default({}) }}"
+
+- name: cinder control plane
+  hosts: controller
+  any_errors_fatal: true
+  roles:
+    - role: cinder-control
+      tags: ['openstack', 'cinder', 'control']
+      when: cinder.enabled|bool
+  environment: "{{ env_vars|default({}) }}"
+
+- name: cinder data plane
+  hosts: cinder_volume
+  any_errors_fatal: true
+  roles:
+    - role: cinder-data
+      tags: ['openstack', 'cinder', 'data', 'cinder-data']
+      when: cinder.enabled|bool
+  environment: "{{ env_vars|default({}) }}"
+
+- name: ceph compute
+  hosts: compute
+  any_errors_fatal: true
+  roles:
+    - role: ceph-compute
+      tags: ['ceph', 'ceph-compute']
+      when: ceph.enabled|bool
+  environment: "{{ env_vars|default({}) }}"
+
+- name: neutron control plane
+  hosts: controller
+  any_errors_fatal: true
+  roles:
+    - role: neutron-control
+      tags: ['openstack', 'neutron', 'control']
+  environment: "{{ env_vars|default({}) }}"
+
+- name: neutron core data plane
+  hosts: compute:network
+  any_errors_fatal: true
+  roles:
+    - role: neutron-data
+      tags: ['openstack', 'neutron', 'data']
+  environment: "{{ env_vars|default({}) }}"
+
+- name: neutron network services data plane
+  hosts: network
+  any_errors_fatal: true
+  roles:
+    - role: neutron-data-network
+      tags: ['openstack', 'neutron', 'data']
+  environment: "{{ env_vars|default({}) }}"
+
+- name: horizon code and config
+  hosts: controller
+  any_errors_fatal: true
+  roles:
+    - role: horizon
+      tags: ['openstack', 'horizon', 'control']
+  environment: "{{ env_vars|default({}) }}"
+
+- name: install swift-common
+  hosts: swiftnode
+  any_errors_fatal: true
+  roles:
+    - role: swift-common
+      tags: ['openstack', 'swift', 'swift-common', 'data']
+  environment: "{{ env_vars|default({}) }}"
+
+- name: swift bootstrap rings
+  hosts: swiftnode_primary
+  any_errors_fatal: true
+  roles:
+    - role: swift-ring
+      tags: ['openstack', 'swift', 'swift-ring', 'data']
+  environment: "{{ env_vars|default({}) }}"
+
+- name: swift code and config
+  hosts: swiftnode
+  any_errors_fatal: true
+  roles:
+    - role: haproxy
+      haproxy_type: swift
+      tags: ['openstack', 'swift', 'control', 'haproxy', 'infra']
+    - role: swift-object
+      tags: ['openstack', 'swift', 'swift-object', 'data']
+    - role: swift-account
+      tags: ['openstack', 'swift', 'swift-account', 'data']
+    - role: swift-container
+      tags: ['openstack', 'swift', 'swift-container', 'data']
+    - role: swift-proxy
+      tags: ['openstack', 'swift', 'swift-proxy', 'control']
+  environment: "{{ env_vars|default({}) }}"
+
+- name: heat code and config
+  hosts: controller
+  any_errors_fatal: true
+  roles:
+    - role: heat
+      tags: ['openstack', 'heat', 'control']
+      when: heat.enabled|bool
+  environment: "{{ env_vars|default({}) }}"
+
+- name: ceilometer control plane
+  hosts: controller
+  any_errors_fatal: true
+  roles:
+    - role: ceilometer-control
+      tags: ['openstack', 'ceilometer', 'control']
+      when: ceilometer.enabled|bool
+  environment: "{{ env_vars|default({}) }}"
+
+- name: ceilometer data plane
+  hosts: compute
+  any_errors_fatal: true
+  roles:
+    - role: ceilometer-data
+      tags: ['openstack', 'ceilometer', 'data']
+      when: ceilometer.enabled|bool
+  environment: "{{ env_vars|default({}) }}"
+
+- name: aodh setup
+  hosts: controller
+  any_errors_fatal: true
+  roles:
+    - role: 'aodh'
+      tags: ['openstack', 'aodh']
+      when: ceilometer.enabled|default('false')|bool
+  environment: "{{ env_vars|default({}) }}"
+
+- name: magnum code and config
+  hosts: controller
+  any_errors_fatal: true
+  roles:
+    - role: magnum
+      tags: ['openstack', 'magnum', 'control']
+      when: magnum.enabled|bool and openstack_install_method != 'distro'
+  environment: "{{ env_vars|default({}) }}"
+
+- name: ironic control plane
+  hosts: controller
+  any_errors_fatal: true
+  roles:
+    - role: ironic-control
+      tags: ['openstack', 'ironic', 'control']
+      when: ironic.enabled|bool and openstack_install_method != 'distro'
+  environment: "{{ env_vars|default({}) }}"
+
+- name: ironic data plane
+  hosts: controller
+  any_errors_fatal: true
+  roles:
+    - role: ironic-data
+      tags: ['openstack', 'ironic', 'data']
+      when: ironic.enabled|bool and openstack_install_method != 'distro'
+  environment: "{{ env_vars|default({}) }}"
+
+- name: barbican
+  hosts: controller
+  any_errors_fatal: true
+  roles:
+    - role: barbican
+      tags: ['openstack', 'barbican']
+      when: barbican.enabled|default(false)
+  environment: "{{ env_vars|default({}) }}"
+
+- name: openstack base setup
+  hosts: controller
+  any_errors_fatal: true
+  roles:
+    - role: 'openstack-setup'
+      tags: ['openstack-setup', 'openstack', 'setup']
+  environment: "{{ env_vars|default({}) }}"
+
+- name: openstack network setup
+  hosts: network
+  any_errors_fatal: true
+  roles:
+    - role: 'openstack-network'
+      tags: ['openstack', 'setup', 'openstack-network']
+      when: neutron.enable_external_interface|default('false')|bool
+  environment: "{{ env_vars|default({}) }}"
+
+# This is the last role because ceph health checks can take up to 2 hours
+- name: ceph update
+  hosts: ceph_monitors:ceph_osds
+  serial: 1 # serial because tracking cluster osd count
+  roles:
+    - role: ceph-update
+      tags: ['ceph', 'ceph-update']
+      when: ceph.enabled|default(false) and (ansible_local|default({})).restart_ceph|default(false)
+  environment: "{{ env_vars|default({}) }}"

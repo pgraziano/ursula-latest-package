@@ -1,0 +1,87 @@
+#
+# This playbook boot straps a new compute node with its network config
+#
+---
+- name: base level tasks across all
+  hosts: all
+  serial: 10
+  vars:
+    timezone: Etc/UTC
+  tasks:
+    - name: update apt cache
+      apt: cache_valid_time=3600 update_cache=yes
+      register: result
+      until: result|succeeded
+      retries: 5
+
+    # Set Locale
+    - name: Generate locales
+      command: /usr/sbin/locale-gen en_US
+
+    - name: set locale to en_US.UTF-8
+      command: /usr/sbin/update-locale LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
+
+    # Set Time zone
+    - name: set /etc/localtime to {{ timezone }}
+      command: /bin/cp /usr/share/zoneinfo/{{ timezone }} /etc/localtime
+
+    - name: set /etc/timezone to {{ timezone }}
+      copy: content="{{ timezone }}" dest=/etc/timezone force=yes owner=root
+            group=root mode=0644
+
+    - name: update tzdata
+      command: /usr/sbin/dpkg-reconfigure --frontend noninteractive tzdata
+
+- name: controller network
+  hosts: controller
+  tasks:
+    - name: install networking bits
+      apt: pkg={{ item }}
+      with_items:
+        - vlan
+        - ucarp
+      register: result
+      until: result|succeeded
+      retries: 5
+
+- name: openstack base setup
+  hosts: openstack
+  tasks:
+    - name: pycurl
+      apt: pkg=python-pycurl
+      when: ansible_distribution_version == "12.04"
+      register: result
+      until: result|succeeded
+      retries: 5
+
+    - name: bridge-utils
+      apt: pkg=bridge-utils
+      register: result
+      until: result|succeeded
+      retries: 5
+
+    - name: enable ip forwarding
+      sysctl: name="net.ipv4.ip_forward" value=1 sysctl_set=yes state=present reload=yes
+
+- name: workstation tasks
+  hosts: workstation
+  tasks:
+    - name: install workstation packages
+      apt: pkg={{ item }}
+      with_items:
+        - curl
+        - vim
+        - wget
+        - git
+      register: result
+      until: result|succeeded
+      retries: 5
+
+    - name: install-ubuntu vagrant call
+      command: /vagrant/bin/install-ubuntu
+
+    - name: install python requirements
+      pip: requirements=/vagrant/requirements.txt
+      register: result
+      until: result|succeeded
+      retries: 5

@@ -1,0 +1,201 @@
+---
+project_name: nova
+nova:
+  services:
+    nova_api: "{{ openstack_meta.nova.services.nova_api[ursula_os] }}"
+    nova_conductor: "{{ openstack_meta.nova.services.nova_conductor[ursula_os] }}"
+    nova_compute: "{{ openstack_meta.nova.services.nova_compute[ursula_os] }}"
+    nova_consoleauth: "{{ openstack_meta.nova.services.nova_consoleauth[ursula_os] }}"
+    nova_novncproxy: "{{ openstack_meta.nova.services.nova_novncproxy[ursula_os] }}"
+    nova_placement_api: "{{ openstack_meta.nova.services.nova_placement_api[ursula_os] }}"
+    nova_scheduler: "{{ openstack_meta.nova.services.nova_scheduler[ursula_os] }}"
+    nova_cert: "{{ openstack_meta.nova.services.nova_cert[ursula_os] }}"
+    nova_cells: "{{ openstack_meta.nova.services.nova_cells[ursula_os] }}"
+    libvirt: "{{ openstack_meta.nova.services.libvirt[ursula_os] }}"
+  placement:
+    enabled: True # Added to keep keystone.services.endpoints.cinderv3 in default-2.0.yml backward compatible with 3.1.x
+    workers: 3
+    uwsgi:
+      method: port
+      http_port: "{{ endpoints.placement.port.backend_api }}"
+      home:
+        distro: /usr/lib/python2.7/site-packages/nova
+        source: /opt/openstack/current/nova
+        package: /opt/openstack/current/nova
+  libvirt:
+    ubuntu:
+      config_file: libvirtd.conf
+      defaults: /etc/default/libvirt
+      group: libvirtd
+      qemu_user: libvirt-qemu
+      qemu_group: libvirtd
+    rhel:
+      config_file: libvirt.conf
+      defaults: /etc/sysconfig/libvirtd
+      group: libvirt
+      qemu_user: qemu
+      qemu_group: qemu
+  enable_fatal_deprecations: True
+  patches:
+  compute_driver: libvirt.LibvirtDriver
+  firewall_driver: nova.virt.firewall.NoopFirewallDriver
+  scheduler_host_manager: host_manager
+  compute_manager: nova.compute.manager.ComputeManager
+  api_workers: 5
+  conductor_workers: 5
+  metadata_api_workers: 5
+  cpu_allocation_ratio: 1.0
+  ram_allocation_ratio: 1.0
+  libvirt_cpu_mode: host-model
+  libvirt_cpu_model: null
+  libvirt_type: kvm
+  enable_ssh: False
+  enable_novnc: True
+  enable_numa: False
+  novnc_method: git
+  novnc_repo: https://github.com/kanaka/noVNC.git
+  novnc_rev: 292f6a5d
+  novnc_url: https://github.com/kanaka/noVNC/archive/v0.5.1.tar.gz
+  vnc_keymap: en-us
+  scheduler_default_filters: RetryFilter,AvailabilityZoneFilter,RamFilter,ComputeFilter,CoreFilter,ComputeCapabilitiesFilter,ImagePropertiesFilter,ServerGroupAntiAffinityFilter,ServerGroupAffinityFilter,AggregateInstanceExtraSpecsFilter,NUMATopologyFilter
+  scheduler_host_subset_size: 1
+  libvirt_bin_version: 1.3.1-1ubuntu10.14~cloud0
+  python_libvirt_version: 1.3.1-1ubuntu1~cloud0
+  qemu_kvm_version: 1:2.5+dfsg-5ubuntu10.14~cloud0
+  # librbd1 version should match the ceph client version
+  librbd1_version: "{{ ceph.client_version[ursula_os] }}"
+  qemu_system_package: qemu-system-x86
+  glance_endpoint: http://{{ endpoints.main }}:9393
+  reserved_host_disk_mb: 51200
+  controller_reserve_ram: 4096
+  compute_reserve_ram: 2048
+  preallocate_images: space
+  state_path: "{{ state_path_base }}/nova"
+  block_device_allocate_retries: 200
+  block_device_allocate_retries_interval: 3
+  heartbeat_timeout_threshold: 30
+  floating_pool: external
+  install_packages:
+    - virt-top
+  driver:
+    docker:
+      rev: 'stable/newton'
+      git_mirror: https://github.com/stackforge/nova-docker.git
+      dest: /opt/stack/novadocker
+  distro:
+    controller:
+      project_packages:
+        - openstack-selinux
+        - openstack-nova-api
+        - openstack-nova-conductor
+        - openstack-nova-scheduler
+        - openstack-nova-novncproxy
+        - openstack-nova-console
+        - openstack-nova-placement-api
+    compute:
+      project_packages:
+        - "librbd1-{{ ceph.client_version[ursula_os] }}"
+        - openstack-selinux
+        - openstack-nova-compute
+    python_post_dependencies: []
+  source:
+    rev: 14.0.10
+    upper_constraints: '{{ openstack_meta.upper_constraints }}'
+    python_dependencies:
+      - { name: PyMySQL }
+      - { name: python-memcached }
+      - { name: python-ironicclient }
+      - { name: uwsgi }
+      #TODO: Remove barbican client in Ocata because it will get installed by Castellan
+      - { name: python-barbicanclient }
+      - { name: "git+https://github.com/blueboxgroup/bbc-openstack-plugins.git#egg=bbc_openstack_plugins" }
+    system_dependencies:
+      ubuntu:
+        - libjs-jquery-tablesorter
+        - python-libvirt
+      rhel:
+        - libvirt-python
+        - python-XStatic-JQuery-TableSorter
+  alternatives:
+    - nova-all
+    - nova-api
+    - nova-api-metadata
+    - nova-api-os-compute
+    - nova-cells
+    - nova-compute
+    - nova-conductor
+    - nova-console
+    - nova-consoleauth
+    - nova-dhcpbridge
+    - nova-idmapshift
+    - nova-manage
+    - nova-network
+    - nova-novncproxy
+    - nova-placement-api
+    - nova-rootwrap
+    - nova-scheduler
+    - nova-serialproxy
+    - nova-spicehtml5proxy
+    - nova-xvpvncproxy
+  logs:
+    - paths:
+        - /var/log/nova/nova-api.log
+      fields:
+        type: openstack
+        tags: nova,nova-api
+    - paths:
+        - /var/log/nova/nova-placement-api.log
+      fields:
+        type: openstack
+        tags: nova,nova-placement-api
+    - paths:
+        - /var/log/nova/nova-compute.log
+      fields:
+        type: openstack
+        tags: nova,nova-compute
+    - paths:
+        - /var/log/nova/nova-conductor.log
+      fields:
+        type: openstack
+        tags: nova,nova-conductor
+    - paths:
+        - /var/log/nova/nova-consoleauth.log
+      fields:
+        type: openstack
+        tags: nova,nova-consoleauth
+    - paths:
+        - /var/log/nova/nova-manage.log
+      fields:
+        type: openstack
+        tags: nova,nova-manage
+    - paths:
+        - /var/log/nova/nova-novncproxy.log
+      fields:
+        type: openstack
+        tags: nova,novnc
+    - paths:
+        - /var/log/nova/nova-scheduler.log
+      fields:
+        type: openstack
+        tags: nova,nova-scheduler
+    - paths:
+        - /var/log/nova/nova-cert.log
+      fields:
+        type: openstack
+        tags: nova,nova-cert
+  logging:
+    debug: False
+    verbose: True
+  cafile: "{{ ssl.cafile }}"
+  monitoring:
+    sensu_checks:
+      check_nova_api:
+        criticality: 'critical'
+      check_nova_services:
+        criticality: 'critical'
+  auditing:
+    enabled: False
+    logging: False
+  custom_disk_filter:
+    enabled: False
+    reserved_ratio: 0.06

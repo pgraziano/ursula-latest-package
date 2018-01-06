@@ -1,0 +1,20 @@
+---
+- name: heat process check installation
+  sensu_process_check: service={{ item }}
+  with_items:
+    - heat-api
+    - heat-api-cfn
+    - heat-engine
+  notify: restart sensu-client
+
+- name: heat-api check
+  sensu_check: name=check-heat-api plugin=check-os-api.rb
+               args="--service heat --criticality {{ heat.monitoring.sensu_checks.check_heat_api.criticality }}"
+               only_on_ip="{{ undercloud_floating_ip | default(floating_ip) }}"
+  notify: restart sensu-client
+
+- name: heat sla metrics
+  sensu_metrics_check: name=heat-sla-metrics plugin=metrics-os-api.py
+                       args='-S heat --scheme {{ monitoring.graphite.cluster_prefix }}'
+                       only_on_ip="{{ undercloud_floating_ip | default(floating_ip) }}"
+  notify: restart sensu-client

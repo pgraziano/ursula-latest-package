@@ -1,0 +1,73 @@
+---
+stack_env: ci-full-ubuntu
+ursula_os: 'ubuntu'
+undercloud_cidr:
+  - cidr: 192.168.0.0/22
+
+primary_interface: ansible_eth0
+
+glance:
+  store_smart: false
+  store_file: True
+
+state_path_base: /opt/stack/data
+
+neutron:
+  enable_external_interface: True
+  l3ha:
+    enabled: True
+    max_agents: 2
+    min_agents: 2
+    cidr: 169.254.192.0/18
+    password: "{{ secrets.service_password }}"
+    interval: 2
+  lbaas:
+    enabled: True
+
+common:
+  hwraid:
+    enabled: False
+
+logging:
+  enabled: true
+  follow:
+    enabled: true
+    global_fields:
+      customer_id: "unknown"
+      cluster_name: "unknown"
+    logs:
+      - paths:
+          - /var/log/messages
+        fields:
+          type: syslog
+  forward:
+    host: 127.0.0.1
+
+
+keystone:
+  ldap_domain:
+    enabled: True
+    domain: users
+  uwsgi:
+    method: socket
+
+barbican:
+  enabled: False
+
+nova:
+  libvirt_type: kvm
+
+serverspec:
+  enabled: True
+
+inspec:
+  enabled: True
+
+ceph:
+  enabled: false
+
+lvm:
+  enabled: true
+
+cinder:
+  enabled: true

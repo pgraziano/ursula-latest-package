@@ -1,0 +1,82 @@
+---
+- name: test various things from the ceph_osds
+  hosts: ceph_osds
+  tasks:
+  - name: check ceph cluster health
+    shell: ceph health
+
+  - name: check ceph osd status
+    shell: ceph osd stat
+
+- name: check ceph related configuration on controllers
+  hosts: controller
+  tasks:
+  - name: cinder uses rbd_hybrid or rbd_ssd as backend
+    shell: grep -P "^enabled_backends.+rbd_(hybrid|ssd)" /etc/cinder/cinder.conf
+
+- name: restart ceph osd service,and check ceph status
+  hosts: ceph_osds_ssd[0]:ceph_osds_hybrid[0] 
+  tasks:
+  - name: restart ceph osd service(rhel) 
+    service: 
+      name: ceph-osd.target
+      state: restarted
+    when: ursula_os == 'rhel'
+
+  - name: restart ceph osd service(ubuntu)
+    service:
+      name: ceph-osd-all
+      state: restarted
+    when: ursula_os == 'ubuntu'
+
+  - name: check ceph cluster health
+    shell: ceph health 
+    register: result
+    run_once: true
+    delegate_to: "{{ groups['ceph_monitors'][0] }}"
+    until: result.stdout == 'HEALTH_OK'
+    retries: 3
+    delay: 30
+
+- name: restart ceph mon service , and check ceph status
+  hosts: ceph_monitors[0]
+  tasks:
+  - name: restart ceph mon service(rhel)
+    service:
+      name: ceph-mon.target
+      state: restarted
+    when: ursula_os == 'rhel'
+
+  - name: restart ceph mon service(ubuntu)
+    service: 
+      name: ceph-mon-all
+      state: restarted
+    when: ursula_os == 'ubuntu'
+
+  - name: check ceph cluster health
+    shell: ceph health 
+    register: result
+    until: result.stdout == 'HEALTH_OK'
+    retries: 3
+    delay: 30
+
+- name: reboot ceph_osds node, and check ceph status
+  hosts: ceph_osds[0]:ceph_monitors[0]
+  serial: 1
+  tasks:
+    - name: reboot {{ inventory_hostname }} node
+      shell: sleep 3 && shutdown -r now
+      async: 1
+      poll: 0
+       
+    - name: wait for {{ inventory_hostname }} to become reachable
+      wait_for: port=22 host={{ ansible_default_ipv4.address }}  search_regex=OpenSSH delay=20
+      delegate_to: localhost
+      become: false
+
+    - name: check ceph status
+      shell: ceph health
+      register: results
+      until: results.stdout == 'HEALTH_OK'
+      retries: 5
+      delay: 30

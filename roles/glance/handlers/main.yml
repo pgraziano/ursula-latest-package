@@ -1,0 +1,17 @@
+---
+- name: restart glance services
+  service: name={{ item.name }} state=restarted must_exist=false
+  when: restart|default(True)
+  with_items:
+    - "{{ glance.services.glance_api }}"
+    - "{{ glance.services.glance_registry }}"
+
+# Restarting rsync 3.0.9-1ubuntu1 on 12.04.4 was failing:
+#     bind () failed: Address already in use (address-family 2)
+# Adding retry logic to workaround
+- name: restart rsync
+  service: name={{ glance.rsync.service }} state=restarted
+  register: result
+  until: result|success
+  retries: 3
+  delay: 10

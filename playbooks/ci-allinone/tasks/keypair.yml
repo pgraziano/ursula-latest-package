@@ -1,0 +1,23 @@
+---
+- name: test for presence of local keypair
+  stat: path={{ testenv_keypair_path }}
+  register: testenv_keypair_local
+
+- name: delete remote keypair
+  os_keypair:
+    name: "{{ testenv_keypair_name }}"
+    state: absent
+  when: not testenv_keypair_local.stat.exists
+
+- name: create the keypair
+  os_keypair:
+    name: "{{ testenv_keypair_name }}"
+    state: present
+  register: testenv_keypair
+
+- name: persist the keypair
+  copy:
+    dest: "{{ testenv_keypair_path }}"
+    content: "{{ testenv_keypair.key.private_key }}"
+    mode: 0600
+  when: testenv_keypair.changed

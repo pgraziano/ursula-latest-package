@@ -1,0 +1,58 @@
+---
+- name: stop btsync
+  service: name=btsync state=stopped enabled=false
+  failed_when: False
+
+- name: remove btsync
+  package: name=btsync state=absent
+  register: result
+  until: result|succeeded
+  retries: 5
+
+- name: btsync config
+  file: dest=/etc/btsync/glance-cache.conf state=absent
+
+- name: install rsync
+  package: name=rsync
+  register: result
+  until: result|succeeded
+  retries: 5
+
+- name: rsync defaults
+  lineinfile:
+    dest: "{{ glance.rsync.defaults }}"
+    regexp: "{{ item.value.regexp }}"
+    line: "{{ item.value.line }}"
+  with_dict:
+    enable:
+      regexp: ^RSYNC_ENABLE
+      line: RSYNC_ENABLE=true
+    nice:
+      regexp: ^RSYNC_NICE
+      line: RSYNC_NICE=10
+    ionice:
+      regexp: ^RSYNC_IONICE
+      line: "RSYNC_IONICE='-c3'"
+  notify:
+    - restart rsync
+
+- name: configure rsync
+  template: src=etc/rsyncd.conf dest=/etc/rsyncd.conf mode=0644
+  notify:
+    - restart rsync
+
+- meta: flush_handlers
+
+- name: start rsync
+  service: name="{{ glance.rsync.service }}" state=started enabled=yes
+
+- name: glance database credentials
+  template: src=etc/glance/.my.cnf
+            dest=/etc/glance/.my.cnf
+            mode=0600
+            owner=glance
+
+- name: glance image sync cron
+  template: src=etc/cron.d/glance-image-sync
+            dest=/etc/cron.d/glance-image-sync
+            mode=0640

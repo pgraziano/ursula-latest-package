@@ -1,0 +1,57 @@
+---
+- name: begin ha.yml
+  debug:
+    msg: Running ha.yml playbook
+
+- name: add floating IPs to instances
+  os_floating_ip:
+    auth: "{{ auth }}"
+    network: external
+    server: "validate-{{ item }}"
+    reuse: true
+  register: fip_instances
+  with_items: "{{ groups['compute'] }}"
+
+- name: floating ips are reachable
+  command: "ping -c 5 {{ item.floating_ip.floating_ip_address }}"
+  with_items: "{{ fip_instances.results }}"
+  register: pings
+  until: pings|success
+  delay: 1
+  retries: 5
+  become: no
+  delegate_to: localhost
+
+# initiate hard reboot on controller 0
+- name: reboot controller 0
+  shell: shutdown -r now
+
+- name: wait for the panic controller 0
+  wait_for:
+    host: "{{ inventory_hostname }}"
+    port: 22
+    state: stopped
+    delay: 10
+    timeout: 30
+  delegate_to: "{{ groups['controller'][1] }}"
+
+# Check API
+- include: api.yml
+
+# Check we still have outbound connectivity
+- include: check_instances_connectivity.yml
+  when: item.item != groups['controller'][0]
+
+- name: wait for the controller to come online (master)
+  wait_for:
+    host: "{{ primary_ip }}"
+    port: 22
+    delay: 10
+    timeout: 600
+  delegate_to: "{{ groups['compute'][1] }}"
+
+# Check API
+- include: api.yml
+
+# Check we still have outbound connectivity
+- include: check_instances_connectivity.yml

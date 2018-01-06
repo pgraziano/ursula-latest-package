@@ -1,0 +1,31 @@
+---
+- name: novnc repo
+  git: repo={{ nova.novnc_repo }}
+       dest=/usr/share/novnc
+       version={{ nova.novnc_rev }}
+       update={{ openstack.git_update }}
+  when: nova.novnc_method == 'git'
+
+#For novnc+method=file
+- block:
+  - name: novnc staging dir
+    file: dest=/opt/stack/novnc state=directory
+
+  - name: fetch novnc tarball
+    get_url: url={{ nova.novnc_url }} dest=/opt/stack/novnc/novnc-0.5.1.tgz
+
+  - name: unzip novnc tarball
+    unarchive: src=/opt/stack/novnc/novnc-0.5.1.tgz dest=/opt/stack/novnc/ copy=no
+
+  - name: is /usr/share/novnc a symlink or a dir
+    stat: path=/usr/share/novnc
+    register: sym
+
+  - name: rm novnc if not a symlink
+    file: path=/usr/share/novnc state=absent
+    when: sym.stat.islnk is defined and sym.stat.islnk == False
+
+  - name: ensure novnc dir exists
+    file: src=/opt/stack/novnc/noVNC-0.5.1 dest=/usr/share/novnc state=link
+    when: not sym.stat.exists
+  when: nova.novnc_method == 'file'

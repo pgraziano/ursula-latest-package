@@ -1,0 +1,8 @@
+neutron ALL=(root) NOPASSWD: /sbin/brctl
+neutron ALL=(root) NOPASSWD: /sbin/bridge
+neutron ALL=(root) NOPASSWD: /sbin/ip
+{% if openstack_install_method != 'distro' %}
+neutron ALL=(root) NOPASSWD: /usr/local/bin/neutron-rootwrap
+{% else %}
+neutron ALL=(root) NOPASSWD: /bin/neutron-rootwrap
+{% endif %}

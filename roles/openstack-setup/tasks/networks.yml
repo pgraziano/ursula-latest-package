@@ -1,0 +1,91 @@
+---
+- name: neutron networks
+  environment:
+    PYTHONPATH: "{{ basevenv_lib_dir|default(omit) }}"
+  os_network:
+    name: "{{ item.name }}"
+    provider_network_type: "{{ item.network_type }}"
+    shared: "{{ item.shared }}"
+    external: "{{ item.external }}"
+    provider_segmentation_id: "{{ item.segmentation_id }}"
+    provider_physical_network: "{{ item.provider_physical_network }}"
+    validate_certs: "{{ validate_certs|default(omit) }}"
+    state: present
+    auth:
+      auth_url: "{{ endpoints.auth_uri }}"
+      project_name: admin
+      username: admin
+      password: "{{ secrets.admin_password }}"
+  with_items: "{{ neutron.networks }}"
+  run_once: true
+
+- name: neutron subnets
+  environment:
+    PYTHONPATH: "{{ basevenv_lib_dir|default(omit) }}"
+  os_subnet:
+    name: "{{ item.name }}"
+    network_name: "{{ item.network_name }}"
+    cidr: "{{ item.cidr }}"
+    enable_dhcp: "{{ item.enable_dhcp }}"
+    gateway_ip: "{{ item.gateway_ip }}"
+    ip_version: "{{ item.ip_version }}"
+    ipv6_ra_mode: "{{ item.ipv6_ra_mode | default(omit) }}"
+    ipv6_address_mode: "{{ item.ipv6_ra_mode | default(omit) }}"
+    dns_nameservers: "{{ item.dns_nameservers|default(omit) }}"
+    allocation_pool_start: "{{ item.pool_start|default(omit) }}"
+    allocation_pool_end: "{{ item.pool_end|default(omit) }}"
+    validate_certs: "{{ validate_certs|default(omit) }}"
+    state: present
+    auth:
+      auth_url: "{{ endpoints.auth_uri }}"
+      project_name: admin
+      username: admin
+      password: "{{ secrets.admin_password }}"
+  with_items: "{{ neutron.subnets }}"
+  run_once: true
+
+- name: neutron routers
+  environment:
+    PYTHONPATH: "{{ basevenv_lib_dir|default(omit) }}"
+  neutron_router: state=present
+                  name={{ item.name }}
+                  tenant_name={{ item.tenant_name }}
+                  admin_state_up=true
+                  auth_url={{ endpoints.auth_uri }}
+                  login_tenant_name=admin
+                  login_username=admin
+                  login_password={{ secrets.admin_password }}
+                  verify={{ validate_certs|default(omit) }}
+  with_items: "{{ neutron.routers }}"
+  run_once: true
+
+- name: neutron routers gateways
+  environment:
+    PYTHONPATH: "{{ basevenv_lib_dir|default(omit) }}"
+  neutron_router_gateway: state=present
+                          router_name={{ item.name }}
+                          network_name={{ item.ext_network|default("external") }}
+                          enable_snat={{ item.enable_snat|default(true) }}
+                          fixed_ip={{ item.gateway_ip|default(omit) }}
+                          auth_url={{ endpoints.auth_uri }}
+                          login_tenant_name=admin
+                          login_username=admin
+                          login_password={{ secrets.admin_password }}
+                          verify={{ validate_certs|default(omit) }}
+  with_items: "{{ neutron.routers }}"
+  run_once: true
+
+- name: neutron router interfaces
+  environment:
+    PYTHONPATH: "{{ basevenv_lib_dir|default(omit) }}"
+  neutron_router_interface: router_name={{ item.router_name }}
+                            subnet_name={{ item.subnet_name }}
+                            tenant_name={{ item.tenant_name }}
+                            state=present
+                            auth_url={{ endpoints.auth_uri }}
+                            login_tenant_name=admin
+                            login_username=admin
+                            login_password={{ secrets.admin_password }}
+                            verify={{ validate_certs|default(omit) }}
+  with_items: "{{ neutron.router_interfaces }}"
+  run_once: true

@@ -1,0 +1,90 @@
+---
+- name: install ironic controller services
+  upstart_service: name={{ item }}
+                   user=ironic
+                   cmd=/usr/local/bin/{{ item }}
+                   config_dirs=/etc/ironic
+  with_items:
+    - ironic-conductor
+
+- name: install ironic pxe driver prereqs
+  apt: pkg={{ item }} state=installed
+  with_items:
+    - ipmitool
+    - ipxe
+    - open-iscsi
+    - qemu-utils
+    - syslinux
+    - syslinux-common
+    - tftp
+    - tftpd-hpa
+
+- name: create pxe and ipxe directories
+  file: name={{item}}
+        state=directory
+        owner=ironic
+        group=ironic
+        mode=0755
+  with_items:
+      - "{{ ironic.tftpboot_path }}"
+      - "{{ ironic.tftpboot_path }}/pxelinux.cfg"
+      - "{{ ironic.httpboot_path }}"
+      - "{{ ironic.httpboot_path }}/pxelinux.cfg"
+      - "{{ ironic.tftpboot_path }}/master_images"
+
+- name: "override default pxelinux.0 source for Ubuntu >= 14.10"
+  set_fact:
+     syslinux_tftp_dir: '/usr/lib/PXELINUX'
+  when: ansible_distribution == 'Ubuntu' and ansible_distribution_version|version_compare('14.10', '>=')
+
+- name: copy pxelinux.0 to tftpboot
+  command: cp {{syslinux_tftp_dir}}/pxelinux.0 {{ ironic.tftpboot_path }}/
+           creates="{{ ironic.tftpboot_path }}/pxelinux.0"
+  when: ansible_distribution == 'Ubuntu' and ansible_distribution_version|version_compare('14.10', '>=')
+
+- name: create tfpd map file
+  template: src=etc/ironic/map-file
+            dest={{ ironic.tftpboot_path }}/map-file
+            owner=ironic group=ironic mode=0744
+
+- name: create tftpd defaults
+  template: src=etc/default/tftpd-hpa dest=/etc/default/tftpd-hpa
+  notify: restart tftpd
+
+- name: ipxe helper script
+  template: src=etc/ironic/boot.ipxe
+            dest={{ ironic.httpboot_path }}/boot.ipxe
+            owner=ironic group=ironic
+            mode=0744
+
+- name: link ipxe boot image into tftp dir
+  file: src=/usr/lib/ipxe/undionly.kpxe
+        dest={{ ironic.tftpboot_path }}/undionly.kpxe
+        owner=root group=root
+        state=link
+
+- name: copy ipxe full image into tftp dir
+  command: cp /usr/lib/ipxe/ipxe.pxe {{ ironic.tftpboot_path }}/
+           creates={{ ironic.tftpboot_path }}/ipxe.pxe
+
+- name: copy ipxe full image into http dir
+  command: cp /usr/lib/ipxe/ipxe.pxe {{ ironic.httpboot_path }}/
+           creates={{ ironic.httpboot_path }}/ipxe.pxe
+
+- name: copy apache configs
+  template: src=etc/apache2/sites-available/ironic-ipxe.conf
+            dest=/etc/apache2/sites-available/ironic-ipxe.conf
+  notify:
+      - reload apache
+
+- name: enable ironic apache site
+  apache2_site: name=ironic-ipxe state=present
+  notify:
+    - reload apache
+
+- meta: flush_handlers
+
+- name: start ironic controller services
+  service: name={{ item }} state=started
+  with_items:
+    - ironic-conductor

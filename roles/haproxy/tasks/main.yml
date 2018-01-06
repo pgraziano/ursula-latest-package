@@ -1,0 +1,64 @@
+---
+- name: HAProxy defaults
+  template: src=etc/default/haproxy dest=/etc/default/haproxy
+  notify: reload haproxy
+
+- name: install haproxy
+  package:
+    name: haproxy
+  notify: restart rsyslog
+  register: result
+  until: result|succeeded
+  retries: 5
+
+- name: ensure haproxy stats dir exists
+  file:
+    dest: /var/run/haproxy
+    state: directory
+
+# WORKAROUND: `service haproxy stop` fails due to incorrect `start-stop-daemon --pid`
+- name: fix haproxy init script
+  template: src=etc/init.d/haproxy dest=/etc/init.d/haproxy mode=0755
+  when: ursula_os == "ubuntu"
+
+- block:
+  - name: configure tmpfiles.d for creation of /run/haproxy on reboot
+    template:
+      src: usr/lib/tmpfiles.d/haproxy.conf
+      dest: /usr/lib/tmpfiles.d/haproxy.conf
+      mode: 0644
+
+  - name: install haproxy rsyslog config
+    template: src=etc/rsyslog.d/haproxy.conf
+              dest=/etc/rsyslog.d/49-haproxy.conf
+    notify: restart rsyslog
+    tags:
+      - ssl
+
+  - name: set selinux policy for haproxy
+    seboolean: name=haproxy_connect_any state=yes persistent=yes
+    tags: selinux
+  when: ursula_os == 'rhel'
+
+- name: install ssl cert+key
+  template: src=etc/haproxy/openstack.pem dest=/etc/haproxy/openstack.pem
+            owner=haproxy group=haproxy mode=0600
+  notify: reload haproxy
+  tags:
+    - ssl
+
+- name: haproxy config
+  template: src=etc/haproxy/haproxy_{{ haproxy_type }}.cfg
+            dest=/etc/haproxy/haproxy.cfg mode=0644
+  notify: reload haproxy
+
+- meta: flush_handlers
+
+- name: start and enable haproxy
+  service: name=haproxy state=started enabled=yes
+
+- include: monitoring.yml
+  tags:
+    - monitoring
+    - common
+  when: monitoring.enabled|default('True')|bool

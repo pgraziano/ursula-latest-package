@@ -1,0 +1,8 @@
+---
+- name: restart heat services
+  service: name={{ item.name }} state=restarted must_exist=false
+  when: restart|default(True)
+  with_items:
+    - "{{ heat.services.heat_api }}"
+    - "{{ heat.services.heat_api_cfn }}"
+    - "{{ heat.services.heat_engine }}"

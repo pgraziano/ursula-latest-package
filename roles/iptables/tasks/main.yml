@@ -1,0 +1,10 @@
+---
+# firewall for public-facing controller nodes
+- name: iptables rules
+  template: src=etc/network/iptables-firewall
+            dest=/etc/network/iptables-firewall owner=root group=root mode=0644
+  notify: reload iptables
+
+- name: iptables load on boot
+  template: src=etc/network/if-up.d/iptables dest=/etc/network/if-up.d/iptables
+            owner=root group=root mode=0755

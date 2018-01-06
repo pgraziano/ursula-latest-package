@@ -1,0 +1,5 @@
+{% if openstack_install_method != 'distro' %}
+nova ALL=(root) NOPASSWD: /usr/local/bin/nova-rootwrap
+{% else %}
+nova ALL=(root) NOPASSWD: /bin/nova-rootwrap
+{% endif %}

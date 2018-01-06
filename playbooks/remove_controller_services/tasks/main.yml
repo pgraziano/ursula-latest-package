@@ -1,0 +1,142 @@
+---
+# Removes all controller specific services, sensu checks, cronjobs, and packages (including percona)
+# intended for converged controller to compute migration
+- name: warn user of danger
+  hosts: all:!vyatta-*
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: warn user
+      run_once: true
+      pause:
+        prompt: "Warning: This action is destructive. Type 'dangerous' to continue"
+      register: warning
+    - name: fail if user does not accept warning.
+      run_once: true
+      fail:
+        msg: Play cancelled
+      when: warning.user_input != "dangerous"
+
+- hosts: controller
+  any_errors_fatal: true
+  tasks:
+    - name: remove all sensu checks
+      shell: /bin/rm -rf /etc/sensu/conf.d/checks/*
+      tags: sensu
+
+    - name: stop sensu client service
+      service: name=sensu-client state=stopped enabled=yes
+      tags: sensu
+
+    - name: remove glance image sync cronjob
+      file: path=/etc/cron.d/glance-image-sync state=absent
+      tags: glance_cron_task
+
+    - name: remove neutron-lbaasv2-agent
+      shell: . /root/stackrc && neutron agent-list | grep '{{ inventory_hostname.split('.')[0] }}' | grep -v neutron-lbaasv2-agent | awk '{print $2}' | xargs -L1 neutron agent-delete
+      failed_when: false
+      tags: neutron_agent
+
+    - name: remove neutron-metadata-agent
+      shell: . /root/stackrc && neutron agent-list | grep '{{ inventory_hostname.split('.')[0] }}' | grep -v neutron-metadata-agent | awk '{print $2}' | xargs -L1 neutron agent-delete
+      failed_when: false
+      tags: neutron_agent
+
+    - name: remove neutron-l3-agent
+      shell: . /root/stackrc && neutron agent-list | grep '{{ inventory_hostname.split('.')[0] }}' | grep -v neutron-l3-agent | awk '{print $2}' | xargs -L1 neutron agent-delete
+      failed_when: false
+      tags: neutron_agent
+
+    - name: remove neutron-dhcp-agent
+      shell: . /root/stackrc && neutron agent-list | grep '{{ inventory_hostname.split('.')[0] }}' | grep -v neutron-dhcp-agent | awk '{print $2}' | xargs -L1 neutron agent-delete
+      failed_when: false
+      tags: neutron_agent
+
+    - name: remove nova agents
+      shell: . /root/stackrc && nova service-list | grep '{{ inventory_hostname.split('.')[0] }}' | grep -v nova-compute | awk '{print $2}' | xargs -L1 nova service-delete
+      failed_when: false
+      tags: nova_service
+
+    - name: disable cinder service entries
+      shell: . /root/stackrc && cinder service-list | grep '{{ inventory_hostname.split('.')[0] }}' | awk '{print $2}' | xargs -L1 cinder service-disable '{{ inventory_hostname }}'
+      failed_when: false
+      tags: cinder_service
+
+    - name: delete cinder service entries
+      shell: mysql -e "delete from cinder.services where host = '{{ inventory_hostname.split('.')[0] }}';"
+      failed_when: false
+      tags: cinder_service
+
+    - name: delete heat service entries
+      shell: mysql -e "delete from heat.service where hostname = '{{ inventory_hostname.split('.')[0] }}';"
+      failed_when: false
+      tags: heat_service
+
+    - include_vars: services.yml
+      tags: controller_services
+
+    - name: stop and remove controller services
+      service: name={{ item }} state=stopped enabled=false must_exist=false
+      with_items: "{{ service_list }}"
+      failed_when: false
+      tags: controller_services
+
+    - name: remove neutron agent conf files
+      file: path="/etc/init/{{ item }}.conf" state=absent
+      with_items:
+        - neutron-lbaasv2-agent
+        - neutron-metadata-agent
+        - neutron-l3-agent
+        - neutron-dhcp-agent
+      tags: controller_services
+
+    - name: remove neutron agent service symlinks
+      file: path="/etc/init.d/{{ item }}" state=absent
+      with_items:
+        - neutron-lbaasv2-agent
+        - neutron-metadata-agent
+        - neutron-l3-agent
+        - neutron-dhcp-agent
+      tags: controller_services
+
+    - name: kill epmd after rabbitmq stopped
+      shell: epmd -kill
+      tags: controller_services
+
+    - name: remove controller packages
+      apt: pkg="openstack-{{ item }}-*" purge=yes state=absent
+      with_items:
+        - cinder
+        - glance
+        - heat
+        - horizon
+        - ironic
+        - keystone
+      failed_when: false
+      tags: controller_packages
+
+    - name: remove serverspec tests
+      shell: /bin/rm -rf /etc/serverspec/spec/localhost
+      tags: serverspec
+
+    - name: remove percona packages
+      apt: pkg="percona-*" purge=yes state=absent
+      failed_when: false
+      tags: percona    
+
+    - name: remove the percona backup script
+      file: path=/etc/cron.daily/percona-xtrabackup state=absent
+      tags: percona
+
+    - name: remove ucarp package
+      apt: pkg="ucarp" purge=yes state=absent
+      failed_when: false
+      tags: ucarp
+
+    - name: remove ursula-agent init script
+      file: path=/etc/init/ursula-agent.conf state=absent
+      tags: ursula_agent
+
+    - name: remove ursula-agent
+      pip: name=ursula-agent state=absent
+      tags: ursula_agent

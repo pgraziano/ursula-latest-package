@@ -1,0 +1,269 @@
+---
+- name: python-mysqldb package
+  apt: pkg=python-mysqldb
+  when: ursula_os == 'ubuntu'
+  register: result
+  until: result|succeeded
+  retries: 5
+
+- name: python-mysqldb package
+  package: name=MySQL-python
+  when: ursula_os == 'rhel'
+  register: result
+  until: result|succeeded
+  retries: 5
+
+- name: create mysql config directory
+  file: path=/etc/mysql/conf.d state=directory
+
+- name: configure the mysql defaults
+  template: src=etc/default/mysql dest=/etc/default/mysql mode=644
+  notify:
+    - restart mysql server
+
+- name: configure my.cnf
+  template: src=etc/my.cnf dest=/etc/my.cnf mode=0644
+  when: ursula_os == 'rhel' or
+        (ursula_os == 'ubuntu' and
+        ansible_distribution_version == "12.04")
+  notify:
+    - restart mysql server
+
+- name: configure my.cnf
+  template: src=etc/my.cnf dest=/etc/mysql/my.cnf mode=0644
+  when: ursula_os == 'ubuntu' and
+        ansible_distribution_version != "12.04"
+  notify:
+    - restart mysql server
+
+- name: install mysql config files
+  template: src=etc/mysql/conf.d/{{ item }} dest=/etc/mysql/conf.d/{{ item }}
+            mode=0644
+  with_items:
+    - bind-inaddr-any.cnf
+    - tuning.cnf
+    - utf8.cnf
+  notify:
+    - restart mysql server
+
+- name: install mysql low memory config
+  template: src=etc/mysql/conf.d/low_memory.cnf dest=/etc/mysql/conf.d/low_memory.cnf
+            mode=0644
+  when: ansible_memtotal_mb < 6000
+  notify:
+    - restart mysql server
+
+- name: install percona xtradb packages
+  apt: pkg={{ item }} state=installed
+  with_items:
+  - percona-xtradb-cluster-galera-{{ xtradb.galera_version }}
+  - percona-xtradb-cluster-client-{{ xtradb.client_version }}
+  - percona-xtradb-cluster-server-{{ xtradb.server_version }}
+  - percona-xtrabackup
+  when: ursula_os == 'ubuntu'
+  register: result
+  until: result|succeeded
+  retries: 5
+
+- name: install percona xtradb packages
+  package:
+    name: "Percona-XtraDB-Cluster-server-{{ xtradb.server_version }}"
+  when: ursula_os == 'rhel'
+  register: result
+  until: result|succeeded
+  retries: 5
+
+# Upgrade to the latest xtradb for CVEs
+# This needs to be done serially because it'll restart the damn thing on
+# package upgrade.
+# While confusing, xtradb.server_version refers to the major version
+# (like 5.6) not the minor release version. So we're asking for the latest
+# minor release of the major release we're currently installing. The major
+# release exists in the package name itself.
+- block:
+  - name: upgrade percona to desired version
+    apt:
+      pkg: "{{ item }}"
+      state: latest
+      update_cache: yes
+    with_items:
+      - percona-xtrabackup
+      - percona-xtradb-cluster-server-{{ xtradb.server_version }}
+      - percona-xtradb-cluster-galera-{{ xtradb.galera_version }}
+
+  # Make sure the cluster is healthy before moving on
+  # NOTE this will fail if we switch to apt packages for sensu plugins!!
+  - name: cluster health check
+    command: /etc/sensu/plugins/percona-cluster-size.rb -d /root/.my.cnf --expected 3 --criticality critical
+    register: cstat
+    until: cstat | succeeded
+    retries: 5
+  when: (dbupgrade | default('False') | bool) or
+        (upgrade | default('False') | bool)
+
+- name: mysql log dir
+  file: dest=/var/log/mysql state=directory mode=2750 owner=mysql group=adm
+
+- name: Change mysql log dir acl
+  acl: name=/var/log/mysql state=present default=yes etype={{ item.etype }} permissions={{ item.permission }}
+  with_items:
+    - etype: user
+      permission: rw
+    - etype: group
+      permission: r
+
+- name: set mysql data path permissions
+  file:
+    path: /var/lib/mysql
+    state: directory
+    owner: mysql
+    group: mysql
+
+# Workaround for 0.8.6 to 0.9.1 upgrade path
+- name: fix config header in replication.cnf
+  lineinfile: dest=/etc/mysql/conf.d/replication.cnf create=yes
+              regexp="^\[mysqld\]" line="[mysqld]" insertbefore=BOF
+
+- name: adjust various other lines in replication.cnf
+  lineinfile: dest=/etc/mysql/conf.d/replication.cnf create=yes
+              regexp="{{ item.value.regexp }}"
+              line="{{ item.value.line }}"
+  with_dict:
+    dse:
+      regexp: '^default_storage_engine\s*='
+      line: "default_storage_engine = InnoDB"
+    blf:
+      regexp: '^binlog_format\s*='
+      line: "binlog_format = ROW"
+    ilub:
+      regexp: '^innodb_locks_unsafe_for_binlog\s*='
+      line: "innodb_locks_unsafe_for_binlog = 1"
+
+- name: make sure /var/run/mysqld has the correct ownership and permissions
+  file:
+    dest: /var/run/mysqld
+    mode: 0755
+    owner: mysql
+    group: mysql
+  notify:
+    - restart mysql server
+
+
+- meta: flush_handlers
+
+- name: check on rhel if bootstrap service is running
+  command: systemctl status mysql@bootstrap.service
+  changed_when: false
+  failed_when: false
+  register: result
+
+- name: start mysql server
+  service: name=mysql state=started enabled=true
+  when: ursula_os == 'ubuntu' or
+        ( ursula_os == 'rhel' and result.rc != 0 )
+
+- name: set mysql root password
+  mysql_user: name=root password={{ mysql.root_password }}
+
+- name: install root .my.cnf defaults file
+  template: src=root/.my.cnf dest=/root/.my.cnf owner=root group=root mode=0600
+
+#FIXME Why is haproxy user created without password?
+- name: add mysql user for haproxy health
+  mysql_user:
+    name: haproxy
+    host: "{{ hostvars[item][primary_interface]['ipv4']['address'] }}"
+  with_items: "{{ groups['controller'] }}"
+
+#FIXME Why is haproxy user created without password?
+- name: add fqdn mysql for haproxy health (because haproxy is dumb)
+  mysql_user:
+    name: haproxy
+    host: "{{ fqdn }}"
+
+- name: ensure anonymous users are not in the database
+  mysql_user: name='' host={{ item }} state=absent
+  with_items:
+    - localhost
+    - "{{ ansible_hostname }}"
+    - "{{ ansible_nodename }}"
+    - "{{ inventory_hostname }}"
+
+- name: remove mysql test database
+  mysql_db: state=absent name=test
+
+- block:
+  - name: are we already bootstrapped
+    shell: mysql -e "SHOW VARIABLES LIKE 'wsrep_on'" | grep 'ON'
+    register: already_bootstrapped
+    failed_when: False
+
+  - name: create state snapshot transfer user from anywhere
+    mysql_user: name={{ xtradb.sst_auth_user }} host={{ item }}
+                password={{ xtradb.sst_auth_password }}
+                priv='*.*:RELOAD,LOCK TABLES,REPLICATION CLIENT'
+    with_items:
+      - '%'
+      - 'localhost'
+
+  - name: stop all of the mysql processes before we boostrap any replication
+    service: name=mysql state=stopped
+    when: not already_bootstrapped.rc == 0
+
+  - name: register replication databases
+    command: echo {% for host in groups['db'] %}{% if not loop.last %}{{ hostvars[host][primary_interface]['ipv4']['address'] }},{% else %}{{ hostvars[host][primary_interface]['ipv4']['address'] }}{% endif %}{% endfor %}
+    register: percona_replication_nodes
+
+  - name: configure bootstrap replication
+    template: src=etc/mysql/conf.d/replication.cnf
+              dest=/etc/mysql/conf.d/replication.cnf mode=0644
+    notify:
+      - restart mysql server if upgrade
+    # the notify is for restart on upgrade. If restart on new install it will
+    # break. FIXME
+
+  - name: bootstrap the primary node
+    command: /etc/init.d/mysql bootstrap-pxc
+    when: ursula_os == 'ubuntu' and
+          ( should_bootstrap_as_primary and not
+            already_bootstrapped.rc == 0 )
+
+  - name: bootstrap the primary node
+    command: systemctl start mysql@bootstrap.service
+    when: ursula_os == 'rhel' and
+          ( should_bootstrap_as_primary and not
+            already_bootstrapped.rc == 0 )
+
+  - name: bootstrap any secondary nodes
+    service: name=mysql state=started
+    when:  not should_bootstrap_as_primary and
+           not already_bootstrapped.rc == 0
+  when: percona.replication|bool
+
+- name: start percona
+  service: name=mysql state=started
+  when: not percona.replication|bool
+- name: remove anonymous users
+  mysql_user: name='' host={{ item }} state=absent
+  with_items:
+    - localhost
+    - "{{ ansible_hostname }}"
+
+- name: check to see if /var/log/mysql/mysql.err exists
+  stat: path=/var/log/mysql/mysql.err
+  register: mysql_error_log
+
+- name: change /var/log/mysql/mysql.err to mode 644
+  file: dest=/var/log/mysql/mysql.err mode=0644
+  when: mysql_error_log.stat.exists|bool
+
+- include: monitoring.yml
+  tags:
+    - monitoring
+    - common
+  when: monitoring.enabled|default('True')|bool
+
+- include: logging.yml
+  tags:
+    - logrotate
+    - logging

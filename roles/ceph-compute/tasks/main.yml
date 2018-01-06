@@ -1,0 +1,39 @@
+---
+- name: create client.cinder.key
+  shell: ceph auth get-key client.cinder > /etc/ceph/client.cinder.key
+         creates=/etc/ceph/client.cinder.key
+  run_once: true
+  delegate_to: "{{ groups['ceph_monitors'][0] }}"
+
+- name: fetch client.cinder.key
+  slurp: path=/etc/ceph/client.cinder.key
+  run_once: true
+  delegate_to: "{{ groups['ceph_monitors'][0] }}"
+  register: client_cinder_key
+
+- name: write client.cinder.key
+  copy:
+    dest: /etc/ceph/client.cinder.key
+    content: "{{ client_cinder_key['content'] | b64decode }}"
+    mode: 0600
+
+# used in secret.xml
+- name: fetch contents of uuid file
+  slurp: path=/etc/ceph/cinder_uuid
+  run_once: true
+  delegate_to: "{{ groups['ceph_monitors'][0] }}"
+  register: cinder_uuid_file
+
+- name: generate ceph secret xml file
+  template:
+    src: etc/ceph/secret.xml
+    dest: /etc/ceph/secret.xml
+    owner: root
+    group: root
+    mode: 0600
+
+- name: define virsh secret
+  shell: virsh secret-define --file /etc/ceph/secret.xml
+
+- name: set virsh secret
+  shell: "virsh secret-set-value --secret {{ cinder_uuid_file.content | b64decode }} --base64 $(cat /etc/ceph/client.cinder.key)"

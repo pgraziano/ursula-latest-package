@@ -1,0 +1,914 @@
+---
+openstack_meta:
+  upper_constraints: 'https://file-mirror.openstack.blueboxgrid.com/upper_constraints/newton/upper-constraints.txt'
+  keystone:
+    services:
+      keystone_api:
+        ubuntu:
+          name: keystone
+          desc: OpenStack Identity Service
+        rhel:
+            name: openstack-keystone
+            desc: OpenStack Identity Service
+            type: notify
+            notify_access: all
+            user: keystone
+            args: --uid keystone --gid keystone --master --emperor /etc/keystone/uwsgi
+            restart: always
+  glance:
+    services:
+      glance_api:
+        ubuntu:
+          name: glance-api
+          desc: OpenStack Image API Service
+          user: glance
+          cmd: /usr/local/bin/glance-api
+        rhel:
+          name: openstack-glance-api
+          desc: OpenStack Image API Service
+          type: simple
+          user: glance
+          cmd: "{{ (ansible_distribution == 'RedHat') | ternary('/usr/bin/', '/usr/local/bin/') }}glance-api"
+          config_dirs: /etc/glance
+          config_files: /etc/glance/glance-api.conf
+          restart: on-failure
+      glance_registry:
+        ubuntu:
+          name: glance-registry
+          desc: OpenStack Image Registry Service
+          user: glance
+          cmd: /usr/local/bin/glance-registry
+        rhel:
+          name: openstack-glance-registry
+          desc: OpenStack Image Registry Service
+          type: simple
+          user: glance
+          cmd: "{{ (ansible_distribution == 'RedHat') | ternary('/usr/bin/', '/usr/local/bin/') }}glance-registry"
+          config_dirs: /etc/glance
+          config_files: /etc/glance/glance-registry.conf
+          restart: on-failure
+  cinder:
+    services:
+      cinder_api:
+        ubuntu:
+          name: cinder-api
+          desc: OpenStack Cinder API Service
+          user: cinder
+          envs:
+            - "REQUESTS_CA_BUNDLE={{ ssl.cafile }}"
+          cmd: /usr/local/bin/cinder-api
+          config_dirs: /etc/cinder
+        rhel:
+          name: openstack-cinder-api
+          desc: OpenStack Cinder API Service
+          type: simple
+          user: cinder
+          environments:
+            - "REQUESTS_CA_BUNDLE={{ ssl.cafile }}"
+          cmd: "{{ (ansible_distribution == 'RedHat') | ternary('/usr/bin/', '/usr/local/bin/') }}cinder-api"
+          config_files: /etc/cinder/cinder.conf
+          restart: on-failure
+      cinder_scheduler:
+        ubuntu:
+          name: cinder-scheduler
+          desc: OpenStack Cinder Scheduler Service
+          user: cinder
+          cmd: /usr/local/bin/cinder-scheduler
+          config_dirs: /etc/cinder
+        rhel:
+          name: openstack-cinder-scheduler
+          desc: OpenStack Cinder Scheduler Service
+          type: simple
+          user: cinder
+          cmd: "{{ (ansible_distribution == 'RedHat') | ternary('/usr/bin/', '/usr/local/bin/') }}cinder-scheduler"
+          config_files: /etc/cinder/cinder.conf
+          restart: on-failure
+      cinder_volume:
+        ubuntu:
+          name: cinder-volume
+          desc: OpenStack Cinder Volume Service
+          user: cinder
+          cmd: /usr/local/bin/cinder-volume
+          config_dirs: /etc/cinder
+        rhel:
+          name: openstack-cinder-volume
+          desc: OpenStack Cinder Volume Service
+          type: simple
+          user: cinder
+          cmd: "{{ (ansible_distribution == 'RedHat') | ternary('/usr/bin/', '/usr/local/bin/') }}cinder-volume"
+          config_files: /etc/cinder/cinder.conf
+          restart: on-failure
+          kill_mode: process
+      cinder_backup:
+        ubuntu:
+          name: cinder-backup
+          desc: OpenStack Cinder Backup Service
+          user: cinder
+          cmd: /usr/local/bin/cinder-backup
+          config_dirs: /etc/cinder
+        rhel:
+          name: openstack-cinder-backup
+          desc: OpenStack Cinder Backup Service
+          type: simple
+          user: cinder
+          cmd: "{{ (ansible_distribution == 'RedHat') | ternary('/usr/bin/', '/usr/local/bin/') }}cinder-backup"
+          config_files: /etc/cinder/cinder.conf
+          restart: on-failure
+  nova:
+    force_flavors: false
+    flavors:
+      - flavorid: 1
+        name: m1.tiny
+        ram: 512
+        disk: 10
+        ephemeral: 0
+        vcpus: 1
+      - flavorid: 2
+        name: m1.small
+        ram: 2048
+        disk: 20
+        ephemeral: 0
+        vcpus: 1
+      - flavorid: 3
+        name: m1.medium
+        ram: 4096
+        disk: 40
+        ephemeral: 0
+        vcpus: 2
+      - flavorid: 4
+        name: m1.large
+        ram: 8192
+        disk: 80
+        ephemeral: 0
+        vcpus: 4
+      - flavorid: 5
+        name: m1.xlarge
+        ram: 16384
+        disk: 160
+        ephemeral: 0
+        vcpus: 8
+    services:
+      nova_api:
+        ubuntu:
+          name: nova-api
+          desc: OpenStack Nova API Service
+          user: nova
+          cmd: /usr/local/bin/nova-api
+          config_dirs: /etc/nova
+        rhel:
+          name: openstack-nova-api
+          desc: OpenStack Nova API Service
+          type: notify
+          notify_access: all
+          user: nova
+          cmd: "{{ (ansible_distribution == 'RedHat') | ternary('/usr/bin/', '/usr/local/bin/') }}nova-api"
+          config_dirs: /etc/nova
+          config_files: /etc/nova/nova.conf
+          restart: always
+      nova_conductor:
+        ubuntu:
+          name: nova-conductor
+          desc: OpenStack Nova Conductor Service
+          user: nova
+          cmd: /usr/local/bin/nova-conductor
+          config_dirs: /etc/nova
+        rhel:
+          name: openstack-nova-conductor
+          desc: OpenStack Nova Conductor Service
+          type: notify
+          notify_access: all
+          user: nova
+          cmd: "{{ (ansible_distribution == 'RedHat') | ternary('/usr/bin/', '/usr/local/bin/') }}nova-conductor"
+          config_dirs: /etc/nova
+          config_files: /etc/nova/nova.conf
+          restart: always
+      nova_compute:
+        ubuntu:
+          name: nova-compute
+          desc: OpenStack Nova Compute Service
+          user: nova
+          envs:
+            - "REQUESTS_CA_BUNDLE={{ ssl.cafile }}"
+          cmd: /usr/local/bin/nova-compute
+          config_dirs: /etc/nova
+        rhel:
+          name: openstack-nova-compute
+          desc: OpenStack Nova Compute Service
+          after: syslog.target network.target libvirtd.service
+          type: notify
+          notify_access: all
+          user: nova
+          environments:
+            - "LIBGUESTFS_ATTACH_METHOD=appliance"
+            - "REQUESTS_CA_BUNDLE={{ ssl.cafile }}"
+          cmd: "{{ (ansible_distribution == 'RedHat') | ternary('/usr/bin/', '/usr/local/bin/') }}nova-compute"
+          config_dirs: /etc/nova
+          config_files: /etc/nova/nova.conf
+          restart: always
+      nova_consoleauth:
+        ubuntu:
+          name: nova-consoleauth
+          desc: OpenStack Nova Console Auth Service
+          user: nova
+          cmd: /usr/local/bin/nova-consoleauth
+          config_dirs: /etc/nova
+        rhel:
+          name: openstack-nova-consoleauth
+          desc: OpenStack Nova Console Auth Service
+          type: notify
+          notify_access: all
+          user: nova
+          cmd: "{{ (ansible_distribution == 'RedHat') | ternary('/usr/bin/', '/usr/local/bin/') }}nova-consoleauth"
+          config_dirs: /etc/nova
+          config_files: /etc/nova/nova.conf
+          restart: always
+      nova_novncproxy:
+        ubuntu:
+          name: nova-novncproxy
+          desc: OpenStack Nova NOVNCPROXY Service
+          user: nova
+          cmd: /usr/local/bin/nova-novncproxy
+          config_dirs: /etc/nova
+        rhel:
+          name: openstack-nova-novncproxy
+          desc: OpenStack Nova NOVNCPROXY Service
+          type: simple
+          user: nova
+          cmd: "{{ (ansible_distribution == 'RedHat') | ternary('/usr/bin/', '/usr/local/bin/') }}nova-novncproxy"
+          config_dirs: /etc/nova
+          config_files: /etc/nova/nova.conf
+          restart: always
+      nova_placement_api:
+          ubuntu:
+            name: nova-placement-api
+            desc: OpenStack Nova Placement Service
+          rhel:
+            name: openstack-nova-placement-api
+            desc: OpenStack Nova Placement Service
+            type: notify
+            notify_access: all
+            user: nova
+            args: --uid nova --gid nova --master --emperor /etc/nova/uwsgi
+            restart: always
+      nova_scheduler:
+        ubuntu:
+          name: nova-scheduler
+          desc: OpenStack Nova Scheduler Service
+          user: nova
+          cmd: /usr/local/bin/nova-scheduler
+          config_dirs: /etc/nova
+        rhel:
+          name: openstack-nova-scheduler
+          desc: OpenStack Nova Schedule Service
+          type: notify
+          notify_access: all
+          user: nova
+          cmd: "{{ (ansible_distribution == 'RedHat') | ternary('/usr/bin/', '/usr/local/bin/') }}nova-scheduler"
+          config_dirs: /etc/nova
+          config_files: /etc/nova/nova.conf
+          restart: always
+      nova_cert:
+        ubuntu:
+          name: nova-cert
+          desc: OpenStack Nova Cert Service
+          user: nova
+          cmd: /usr/local/bin/nova-cert
+          config_dirs: /etc/nova
+          state: absent
+        rhel:
+          name: openstack-nova-cert
+          desc: OpenStack Nova Cert Service
+          type: notify
+          notify_access: all
+          user: nova
+          cmd: "{{ (ansible_distribution == 'RedHat') | ternary('/usr/bin/', '/usr/local/bin/') }}nova-cert"
+          config_dirs: /etc/nova
+          config_files: /etc/nova/nova.conf
+          restart: always
+          state: absent
+      nova_cells:
+        ubuntu:
+          name: nova_cells
+          desc: OpenStack Nova Cells Service
+          user: nova
+          cmd: /usr/local/bin/nova_cells
+          config_dirs: /etc/nova
+          state: absent
+        rhel:
+          name: openstack-nova_cells
+          desc: OpenStack Nova Cells Service
+          type: notify
+          notify_access: all
+          user: nova
+          cmd: "{{ (ansible_distribution == 'RedHat') | ternary('/usr/bin/', '/usr/local/bin/') }}nova_cells"
+          config_dirs: /etc/nova
+          config_files: /etc/nova/nova.conf
+          restart: always
+          state: absent
+      libvirt:
+        ubuntu:
+          name: libvirt-bin
+          desc: Libvirt Service
+        rhel:
+          name: libvirtd
+          desc: Libvrt Service
+  neutron:
+    services:
+      neutron_server:
+        ubuntu:
+          name: neutron-server
+          desc: OpenStack Neutron Server Service
+          user: neutron
+          envs:
+            - "REQUESTS_CA_BUNDLE={{ ssl.cafile }}"
+          cmd: /usr/local/bin/neutron-server
+          config_dirs: /etc/neutron
+          config_files: /etc/neutron/neutron.conf,/etc/neutron/plugins/ml2/ml2_plugin.ini
+        rhel:
+          name: neutron-server
+          desc: OpenStack Neutron Server Service
+          type: notify
+          notify_access: all
+          user: neutron
+          environments:
+            - "REQUESTS_CA_BUNDLE={{ ssl.cafile }}"
+          cmd: "{{ (ansible_distribution == 'RedHat') | ternary('/usr/bin/', '/usr/local/bin/') }}neutron-server"
+          config_dirs: /etc/neutron
+          config_files: /etc/neutron/neutron.conf,/etc/neutron/plugins/ml2/ml2_plugin.ini
+          restart: on-failure
+          kill_mode: process
+      neutron_dhcp_agent:
+        ubuntu:
+          name: neutron-dhcp-agent
+          desc: OpenStack Neutron DHCP Agent Service
+          user: neutron
+          envs:
+            - "REQUESTS_CA_BUNDLE={{ ssl.cafile }}"
+          cmd: /usr/local/bin/neutron-dhcp-agent
+          config_dirs: /etc/neutron
+          config_files: /etc/neutron/neutron.conf,/etc/neutron/dhcp_agent.ini
+          start_on: starting neutron-linuxbridge-agent
+          stop_on: stopping neutron-linuxbridge-agent
+        rhel:
+          name: neutron-dhcp-agent
+          desc: OpenStack Neutron DHCP Agent Service
+          type: simple
+          user: neutron
+          environments:
+            - "REQUESTS_CA_BUNDLE={{ ssl.cafile }}"
+          cmd: "{{ (ansible_distribution == 'RedHat') | ternary('/usr/bin/', '/usr/local/bin/') }}neutron-dhcp-agent"
+          config_dirs: /etc/neutron
+          config_files: /etc/neutron/neutron.conf,/etc/neutron/dhcp_agent.ini
+          restart: on-failure
+          kill_mode: process
+      neutron_l3_agent:
+        ubuntu:
+          name: neutron-l3-agent
+          desc: OpenStack Neutron L3 Agent Service
+          user: neutron
+          envs:
+            - "REQUESTS_CA_BUNDLE={{ ssl.cafile }}"
+          cmd: /usr/local/bin/neutron-l3-agent
+          config_dirs: /etc/neutron
+          config_files: /etc/neutron/neutron.conf,/etc/neutron/l3_agent.ini
+          pidfile: /var/run/neutron-l3-agent.pid
+          start_on: starting neutron-linuxbridge-agent
+          stop_on: stopping neutron-linuxbridge-agent
+        rhel:
+          name: neutron-l3-agent
+          desc: OpenStack Neutron L3 Agent Service
+          type: simple
+          user: neutron
+          environments:
+            - "REQUESTS_CA_BUNDLE={{ ssl.cafile }}"
+          cmd: "{{ (ansible_distribution == 'RedHat') | ternary('/usr/bin/', '/usr/local/bin/') }}neutron-l3-agent"
+          config_dirs: /etc/neutron
+          config_files: /etc/neutron/neutron.conf,/etc/neutron/l3_agent.ini
+          pidfile: /var/run/neutron-l3-agent.pid
+          restart: on-failure
+          kill_mode: process
+      neutron_openvswitch_agent:
+        ubuntu:
+          name: neutron-openvswitch-agent
+          desc: OpenStack Neutron Open VSwitch Service
+          user: neutron
+          envs:
+            - "REQUESTS_CA_BUNDLE={{ ssl.cafile }}"
+          cmd: /usr/local/bin/neutron-openvswitch-agent
+          config_dirs: /etc/neutron
+        rhel:
+          name: neutron-openvswitch-agent
+          desc: OpenStack Neutron Open VSwitch Service
+          user: neutron
+          environments:
+            - "REQUESTS_CA_BUNDLE={{ ssl.cafile }}"
+          cmd: "{{ (ansible_distribution == 'RedHat') | ternary('/usr/bin/', '/usr/local/bin/') }}neutron-openvswitch-agent"
+          config_dirs: /etc/neutron
+      neutron_linuxbridge_agent:
+        ubuntu:
+          name: neutron-linuxbridge-agent
+          desc: OpenStack Neutron Linuxbridge Agent Service
+          user: neutron
+          envs:
+            - "REQUESTS_CA_BUNDLE={{ ssl.cafile }}"
+          cmd: /usr/local/bin/neutron-linuxbridge-agent
+          config_dirs: /etc/neutron
+          config_files: /etc/neutron/neutron.conf,/etc/neutron/plugins/ml2/ml2_plugin.ini,/etc/neutron/plugins/ml2/ml2_plugin_dataplane.ini
+        rhel:
+          name: neutron-linuxbridge-agent
+          desc: OpenStack Neutron Linuxbridge Agent Service
+          type: simple
+          user: neutron
+          environments:
+            - "REQUESTS_CA_BUNDLE={{ ssl.cafile }}"
+          #prestart_script: "{{ (ansible_distribution == 'RedHat') | ternary('/usr/bin/neutron-enable-bridge-firewall.sh', '') }}"
+          cmd: "{{ (ansible_distribution == 'RedHat') | ternary('/usr/bin/', '/usr/local/bin/') }}neutron-linuxbridge-agent"
+          config_dirs: /etc/neutron
+          config_files: /etc/neutron/neutron.conf,/etc/neutron/plugins/ml2/ml2_plugin.ini,/etc/neutron/plugins/ml2/ml2_plugin_dataplane.ini
+          restart: on-failure
+          kill_mode: process
+      neutron_metadata_agent:
+        ubuntu:
+          name: neutron-metadata-agent
+          desc: OpenStack Neutron Metadata Agent Service
+          user: neutron
+          envs:
+            - "REQUESTS_CA_BUNDLE={{ ssl.cafile }}"
+          cmd: /usr/local/bin/neutron-metadata-agent
+          config_dirs: /etc/neutron
+          config_files: /etc/neutron/neutron.conf,/etc/neutron/metadata_agent.ini
+          start_on: starting neutron-linuxbridge-agent
+          stop_on: stopping neutron-linuxbridge-agent
+        rhel:
+          name: neutron-metadata-agent
+          desc: OpenStack Neutron Metadata Agent Service
+          type: simple
+          user: neutron
+          environments:
+            - "REQUESTS_CA_BUNDLE={{ ssl.cafile }}"
+          cmd: "{{ (ansible_distribution == 'RedHat') | ternary('/usr/bin/', '/usr/local/bin/') }}neutron-metadata-agent"
+          config_dirs: /etc/neutron
+          config_files: /etc/neutron/neutron.conf,/etc/neutron/metadata_agent.ini
+          restart: on-failure
+          kill_mode: process
+      neutron_lbaasv2_agent:
+        ubuntu:
+          name: neutron-lbaasv2-agent
+          desc: OpenStack Neutron LBaasv2 Service
+          user: neutron
+          envs:
+            - "REQUESTS_CA_BUNDLE={{ ssl.cafile }}"
+          cmd: /usr/local/bin/neutron-lbaasv2-agent
+          config_dirs: /etc/neutron
+          config_files: /etc/neutron/neutron.conf,/etc/neutron/services/loadbalancer/haproxy/lbaas_agent.ini,/etc/neutron/neutron_lbaas.conf
+          start_on: starting neutron-linuxbridge-agent
+          stop_on: stopping neutron-linuxbridge-agent
+        rhel:
+          name: neutron-lbaasv2-agent
+          desc: OpenStack Neutron LBaasv2 Service
+          type: simple
+          user: neutron
+          environments:
+            - "REQUESTS_CA_BUNDLE={{ ssl.cafile }}"
+          cmd: "{{ (ansible_distribution == 'RedHat') | ternary('/usr/bin/', '/usr/local/bin/') }}neutron-lbaasv2-agent"
+          config_dirs: /etc/neutron
+          config_files: /etc/neutron/neutron.conf,/etc/neutron/services/loadbalancer/haproxy/lbaas_agent.ini,/etc/neutron/neutron_lbaas.conf
+          restart: on-failure
+          kill_mode: process
+  swift:
+    services:
+      swift_account:
+        ubuntu:
+          name: swift-account
+          desc: OpenStack Object Storage (swift) - Account Service
+          cmd: /usr/local/bin/swift-account-server
+          config_files: /etc/swift/account-server.conf
+          user: swift
+        rhel:
+          name: openstack-swift-account
+          desc: OpenStack Object Storage (swift) - Account Service
+          cmd: /usr/bin/swift-account-server
+          args: /etc/swift/account-server.conf
+          user: swift
+          restart: on-failure
+          type: simple
+      swift_account_auditor:
+        ubuntu:
+          name: swift-account-auditor
+          desc: OpenStack Object Storage (swift) - Account Auditor
+          cmd: /usr/local/bin/swift-account-auditor
+          config_files: /etc/swift/account-server.conf
+          user: swift
+        rhel:
+          name: openstack-swift-account-auditor
+          desc: OpenStack Object Storage (swift) - Account Auditor
+          cmd: /usr/bin/swift-account-auditor
+          args: /etc/swift/account-server.conf
+          user: swift
+          restart: on-failure
+          type: simple
+      swift_account_reaper:
+        ubuntu:
+          name: swift-account-reaper
+          desc: OpenStack Object Storage (swift) - Account Reaper
+          cmd: /usr/local/bin/swift-account-reaper
+          config_files: /etc/swift/account-server.conf
+          user: swift
+        rhel:
+          name: openstack-swift-account-reaper
+          desc: OpenStack Object Storage (swift) - Account Reaper
+          cmd: /usr/bin/swift-account-reaper
+          args: /etc/swift/account-server.conf
+          user: swift
+          restart: on-failure
+          type: simple
+      swift_account_replicator:
+        ubuntu:
+          name: swift-account-replicator
+          desc: OpenStack Object Storage (swift) - Account Replicator
+          cmd: /usr/local/bin/swift-account-replicator
+          config_files: /etc/swift/account-server.conf
+          user: swift
+        rhel:
+          name: openstack-swift-account-replicator
+          desc: OpenStack Object Storage (swift) - Account Replicator
+          cmd: /usr/bin/swift-account-replicator
+          args: /etc/swift/account-server.conf
+          user: swift
+          restart: on-failure
+          type: simple
+      swift_container:
+        ubuntu:
+          name: swift-container
+          desc: OpenStack Object Storage (swift) - Container Server
+          cmd: /usr/local/bin/swift-container-server
+          config_files: /etc/swift/container-server.conf
+          user: swift
+        rhel:
+          name: openstack-swift-container
+          desc: OpenStack Object Storage (swift) - Container Server
+          cmd: /usr/bin/swift-container-server
+          args: /etc/swift/container-server.conf
+          user: swift
+          restart: on-failure
+          type: simple
+      swift_container_auditor:
+        ubuntu:
+          name: swift-container-auditor
+          desc: OpenStack Object Storage (swift) - Container Auditor
+          cmd: /usr/local/bin/swift-container-auditor
+          config_files: /etc/swift/container-server.conf
+          user: swift
+        rhel:
+          name: openstack-swift-container-auditor
+          desc: OpenStack Object Storage (swift) - Container Auditor
+          cmd: /usr/bin/swift-container-auditor
+          args: /etc/swift/container-server.conf
+          user: swift
+          restart: on-failure
+          type: simple
+      swift_container_replicator:
+        ubuntu:
+          name: swift-container-replicator
+          desc: OpenStack Object Storage (swift) - Container Replicator
+          cmd: /usr/local/bin/swift-container-replicator
+          config_files: /etc/swift/container-server.conf
+          user: swift
+        rhel:
+          name: openstack-swift-container-replicator
+          desc: OpenStack Object Storage (swift) - Container Replicator
+          cmd: /usr/bin/swift-container-replicator
+          args: /etc/swift/container-server.conf
+          user: swift
+          restart: on-failure
+          type: simple
+      swift_container_sync:
+        ubuntu:
+          name: swift-container-sync
+          desc: OpenStack Object Storage (swift) - Container Sync
+          cmd: /usr/local/bin/swift-container-sync
+          config_files: /etc/swift/container-server.conf
+          user: swift
+        rhel:
+          name: openstack-swift-container-sync
+          desc: OpenStack Object Storage (swift) - Container Sync
+          cmd: /usr/bin/swift-container-sync
+          args: /etc/swift/container-server.conf
+          user: swift
+          restart: on-failure
+          type: simple
+      swift_container_updater:
+        ubuntu:
+          name: swift-container-updater
+          desc: OpenStack Object Storage (swift) - Container Updater
+          cmd: /usr/local/bin/swift-container-updater
+          config_files: /etc/swift/container-server.conf
+          user: swift
+        rhel:
+          name: openstack-swift-container-updater
+          desc: OpenStack Object Storage (swift) - Container Updater
+          cmd: /usr/bin/swift-container-updater
+          args: /etc/swift/container-server.conf
+          user: swift
+          restart: on-failure
+          type: simple
+      swift_object:
+        ubuntu:
+          name: swift-object-server
+          desc: OpenStack Object Storage (swift) - Object Server
+          cmd: /usr/local/bin/swift-object-server
+          config_files: /etc/swift/object-server.conf
+          user: swift
+        rhel:
+          name: openstack-swift-object
+          desc: OpenStack Object Storage (swift) - Object Server
+          cmd: /usr/bin/swift-object-server
+          args: /etc/swift/object-server.conf
+          user: swift
+          restart: on-failure
+          type: simple
+      swift_object_auditor:
+        ubuntu:
+          name: swift-object-auditor
+          desc: OpenStack Object Storage (swift) - Object Auditor
+          cmd: /usr/local/bin/swift-object-auditor
+          config_files: /etc/swift/object-server.conf
+          user: swift
+        rhel:
+          name: openstack-swift-object-auditor
+          desc: OpenStack Object Storage (swift) - Object Auditor
+          cmd: /usr/bin/swift-object-auditor
+          args: /etc/swift/object-server.conf
+          user: swift
+          restart: on-failure
+          type: simple
+      swift_object_expirer:
+        ubuntu:
+          name: swift-object-expirer
+          desc: OpenStack Object Storage (swift) - Object Expirer
+          cmd: /usr/local/bin/swift-object-expirer
+          config_files: /etc/swift/object-expirer.conf
+          user: swift
+        rhel:
+          name: openstack-swift-object-expirer
+          desc: OpenStack Object Storage (swift) - Object Expirer
+          cmd: /usr/bin/swift-object-expirer
+          args: /etc/swift/object-expirer.conf
+          user: swift
+          restart: on-failure
+          type: simple
+      swift_object_replicator:
+        ubuntu:
+          name: swift-object-replicator
+          desc: OpenStack Object Storage (swift) - Object Replicator
+          cmd: /usr/local/bin/swift-object-replicator
+          config_files: /etc/swift/object-server.conf
+          user: swift
+        rhel:
+          name: openstack-swift-object-replicator
+          desc: OpenStack Object Storage (swift) - Object Replicator
+          cmd: /usr/bin/swift-object-replicator
+          args: /etc/swift/object-server.conf
+          user: swift
+          restart: on-failure
+          type: simple
+      swift_object_updater:
+        ubuntu:
+          name: swift-object-updater
+          desc: OpenStack Object Storage (swift) - Object Updater
+          cmd: /usr/local/bin/swift-object-updater
+          config_files: /etc/swift/object-server.conf
+          user: swift
+        rhel:
+          name: openstack-swift-object-updater
+          desc: OpenStack Object Storage (swift) - Object Updater
+          cmd: /usr/bin/swift-object-updater
+          args: /etc/swift/object-server.conf
+          user: swift
+          restart: on-failure
+          type: simple
+      swift_proxy:
+        ubuntu:
+          name: swift-proxy
+          desc: OpenStack Object Storage (swift) - Proxy Server
+          cmd: /usr/local/bin/swift-proxy-server
+          config_files: /etc/swift/proxy-server.conf
+          user: swift
+        rhel:
+          name: openstack-swift-proxy
+          desc: OpenStack Object Storage (swift) - Proxy Server
+          cmd: /usr/bin/swift-proxy-server
+          args: /etc/swift/proxy-server.conf
+          user: swift
+          restart: on-failure
+          type: simple
+  heat:
+    services:
+      heat_api:
+        ubuntu:
+          name: heat-api
+          desc: OpenStack Orchestration API Service
+          user: heat
+          cmd: /usr/local/bin/heat-api
+        rhel:
+          name: openstack-heat-api
+          desc: OpenStack Orchestration API Service
+          type: simple
+          user: heat
+          cmd: "{{ (ansible_distribution == 'RedHat') | ternary('/usr/bin/', '/usr/local/bin/') }}heat-api"
+          config_dirs: /etc/heat
+          config_files: /etc/heat/heat.conf
+          restart: on-failure
+      heat_api_cfn:
+        ubuntu:
+          name: heat-api-cfn
+          desc: OpenStack Orchestration CFN API Service
+          user: heat
+          cmd: /usr/local/bin/heat-api-cfn
+        rhel:
+          name: openstack-heat-api-cfn
+          desc: OpenStack Orchestration CFN API Service
+          type: simple
+          user: heat
+          cmd: "{{ (ansible_distribution == 'RedHat') | ternary('/usr/bin/', '/usr/local/bin/') }}heat-api-cfn"
+          config_dirs: /etc/heat
+          config_files: /etc/heat/heat.conf
+          restart: on-failure
+      heat_engine:
+        ubuntu:
+          name: heat-engine
+          desc: OpenStack Engine Service
+          user: heat
+          cmd: /usr/local/bin/heat-engine
+        rhel:
+          name: openstack-heat-engine
+          desc: OpenStack Engine Service
+          type: simple
+          user: heat
+          cmd: "{{ (ansible_distribution == 'RedHat') | ternary('/usr/bin/', '/usr/local/bin/') }}heat-engine"
+          config_dirs: /etc/heat
+          config_files: /etc/heat/heat.conf
+          restart: on-failure
+  apache:
+    ubuntu:
+     user: www-data
+     group: www-data
+     package_name: apache2
+    rhel:
+      user: apache
+      group: apache
+      package_name: httpd
+  aodh:
+    services:
+      aodh_api:
+        ubuntu:
+          name: aodh-api
+          desc: Aodh API Service
+          user: aodh
+          cmd: /usr/local/bin/aodh-api
+          config_dirs: /etc/aodh
+        rhel:
+          name: openstack-aodh-api
+          desc: Aodh API Service
+          type: simple
+          user: aodh
+          cmd: "{{ (ansible_distribution == 'RedHat') | ternary('/usr/bin/', '/usr/local/bin/') }}aodh-api"
+          restart: on-failure
+      aodh_evaluator:
+        ubuntu:
+          name: aodh-evaluator
+          desc: Aodh Evaluator Service
+          user: aodh
+          cmd: /usr/local/bin/aodh-evaluator
+          config_dirs: /etc/aodh
+        rhel:
+          name: openstack-aodh-evaluator
+          desc: Aodh Evaluator Service
+          type: simple
+          user: aodh
+          cmd: "{{ (ansible_distribution == 'RedHat') | ternary('/usr/bin/', '/usr/local/bin/') }}aodh-evaluator"
+          restart: on-failure
+      aodh_listener:
+        ubuntu:
+          name: aodh-listener
+          desc: Aodh Listener Service
+          user: aodh
+          cmd: /usr/local/bin/aodh-listener
+          config_dirs: /etc/aodh
+        rhel:
+          name: openstack-aodh-listener
+          desc: Aodh Listener Service
+          type: simple
+          user: aodh
+          cmd: "{{ (ansible_distribution == 'RedHat') | ternary('/usr/bin/', '/usr/local/bin/') }}aodh-listener"
+          restart: on-failure
+      aodh_notifier:
+        ubuntu:
+          name: aodh-notifier
+          desc: Aodh Notifier Service
+          user: aodh
+          cmd: /usr/local/bin/aodh-notifier
+          config_dirs: /etc/aodh
+        rhel:
+          name: openstack-aodh-notifier
+          desc: Aodh Notifier Service
+          type: simple
+          user: aodh
+          cmd: "{{ (ansible_distribution == 'RedHat') | ternary('/usr/bin/', '/usr/local/bin/') }}aodh-notifier"
+          restart: on-failure
+      aodh_expirer:
+        ubuntu:
+          name: aodh-expirer
+          desc: Aodh Expirer package
+          user: aodh
+          cmd: /usr/local/bin/aodh-expirer
+          config_dirs: /etc/aodh
+        rhel:
+          name: openstack-aodh-expirer
+          desc: Aodh Expirer package
+          type: simple
+          user: aodh
+          cmd: "{{ (ansible_distribution == 'RedHat') | ternary('/usr/bin/', '/usr/local/bin/') }}aodh-expirer"
+          restart: on-failure
+  ceilometer:
+    services:
+      ceilometer_api:
+        ubuntu:
+          name: ceilometer-api
+          desc: Ceilometer API Service
+          user: ceilometer
+          cmd: /usr/local/bin/ceilometer-api
+        rhel:
+          name: openstack-ceilometer-api
+          desc: Ceilometer API Service
+          type: simple
+          user: ceilometer
+          cmd: "{{ (ansible_distribution == 'RedHat') | ternary('/usr/bin/', '/usr/local/bin/') }}ceilometer-api"
+          restart: on-failure
+      ceilometer_collector:
+        ubuntu:
+          name: ceilometer-collector
+          desc: Ceilometer Collector Service
+          user: ceilometer
+          cmd: /usr/local/bin/ceilometer-collector
+        rhel:
+          name: openstack-ceilometer-collector
+          desc: Ceilometer Collector Service
+          type: simple
+          user: ceilometer
+          cmd: "{{ (ansible_distribution == 'RedHat') | ternary('/usr/bin/', '/usr/local/bin/') }}ceilometer-collector"
+          restart: on-failure
+      ceilometer_notification:
+        ubuntu:
+          name: ceilometer-agent-notification
+          desc: Ceilometer Notification Agent
+          user: ceilometer
+          cmd: /usr/local/bin/ceilometer-agent-notification
+        rhel:
+          name: openstack-ceilometer-notification
+          desc: Ceilometer Notification Agent
+          type: simple
+          user: ceilometer
+          cmd: "{{ (ansible_distribution == 'RedHat') | ternary('/usr/bin/', '/usr/local/bin/') }}ceilometer-agent-notification"
+          restart: on-failure
+      ceilometer_polling:
+        ubuntu:
+          name: ceilometer-polling
+          desc: Ceilometer Polling Agent
+          user: ceilometer
+          cmd: /usr/local/bin/ceilometer-polling
+        rhel:
+          name: openstack-ceilometer-polling
+          desc: Ceilometer Polling Agent
+          type: simple
+          user: ceilometer
+          cmd: "{{ (ansible_distribution == 'RedHat') | ternary('/usr/bin/', '/usr/local/bin/') }}ceilometer-polling"
+          restart: on-failure
+      ceilometer_polling_compute:
+        ubuntu:
+          name: ceilometer-polling
+          desc: Ceilometer Compute Metrics Polling Agent
+          user: ceilometer
+          cmd: /usr/local/bin/ceilometer-polling
+        rhel:
+          name: openstack-ceilometer-compute
+          desc: Ceilometer Compute Metrics Polling Agent
+          type: simple
+          user: ceilometer
+          cmd: "{{ (ansible_distribution == 'RedHat') | ternary('/usr/bin/', '/usr/local/bin/') }}ceilometer-polling"
+          args: "--polling-namespaces compute"
+          restart: on-failure
+  barbican:
+    services:
+      barbican_api:
+        ubuntu:
+          name: barbican
+          desc: OpenStack Key Management Service
+        rhel:
+            name: openstack-barbican
+            desc: OpenStack Key Management Service
+            type: notify
+            notify_access: all
+            user: barbican
+            args: --uid barbican --gid barbican --master --emperor /etc/barbican/uwsgi
+            restart: always

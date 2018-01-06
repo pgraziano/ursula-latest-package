@@ -1,0 +1,24 @@
+---
+- name: test barbican
+  hosts: controller[0]
+  tasks:
+  - name: OpenStack service list should include barbican
+    shell: . /root/stackrc; openstack service list | grep barbican
+
+  - name: OpenStack endpoint list should include barbican
+    shell: . /root/stackrc; openstack endpoint list | grep barbican
+
+  - name: Create a barbican secret
+    shell: >
+      . /root/stackrc;
+      openstack secret store --secret-type passphrase --name 'test_barbican' --payload 'Pa$$phrasE' -c "Secret href" -f value
+    register: secret_ref
+
+  - name: List barbican secrets
+    shell: . /root/stackrc; openstack secret list | grep {{ secret_ref.stdout }}
+
+  - name: Show the barbican secret created
+    shell: . /root/stackrc; openstack secret get {{ secret_ref.stdout }} | grep test_barbican
+
+  - name: Delete barbican secret
+    shell: . /root/stackrc; openstack secret delete {{ secret_ref.stdout }}

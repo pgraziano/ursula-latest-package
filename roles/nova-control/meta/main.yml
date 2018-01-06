@@ -1,0 +1,22 @@
+---
+dependencies:
+  - role: inspec
+    install_inspec_controls: [nova_control]
+    tags: inspec
+    when:
+      - inspec.enabled|bool
+      - inspec.controls.nova_control.enabled|bool
+  - role: nova-common
+  - role: openstack-database
+    database_name: nova
+  - role: openstack-database
+    database_name: nova_api
+  - role: collectd-plugin
+    when: collectd is defined and collectd.enabled|bool
+  - role: openstack-firewall
+    rule_name: nova
+    rules_type_input:
+      - { protocol: tcp, port: "{{ endpoints.nova.port.haproxy_api }}" }
+      - { protocol: tcp, port: "{{ endpoints.novnc.port.haproxy_api }}" }
+      - { protocol: tcp, port: "{{ endpoints.placement.port.haproxy_api }}" }
+

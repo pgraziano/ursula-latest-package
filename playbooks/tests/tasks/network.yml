@@ -1,0 +1,80 @@
+---
+- name: network tests
+  hosts: network[0]
+  tasks:
+  - name: migrate neutron services to first network node
+    shell: . /root/stackrc; HOSTNAME={{ ansible_hostname }} /usr/local/bin/migrate_neutron_services
+
+  - name: neutron agents are all alive
+    shell: . /root/stackrc; neutron agent-list | awk
+           '/ xxx / {print;ec=1} END{exit ec}'
+
+  - name: neutron has an internal network
+    shell: . /root/stackrc; neutron net-list | grep internal
+
+  - name: neutron has a network with network_type vxlan
+    shell: . /root/stackrc; neutron net-show internal | grep
+           provider:network_type | grep vxlan
+
+  - name: neutron has a network with segmentation_id 256
+    shell: . /root/stackrc; neutron net-show internal | grep
+           provider:segmentation_id | grep 256
+
+  - name: neutron has a network with router_external False
+    shell: . /root/stackrc; neutron net-show internal | grep
+           router:external | grep False
+
+  - name: neutron has the internal subnet
+    shell: . /root/stackrc; neutron subnet-list | grep internal_v4
+
+  - name: neutron has the internal subnet with cidr
+    shell: . /root/stackrc; neutron subnet-show internal_v4 | grep cidr | grep
+           172.16.255.0/24
+
+  - name: neutron has the internal subnet with cidr
+    shell: . /root/stackrc; neutron subnet-show internal_v6 | grep cidr | grep
+           2db8:1::/64
+
+  - name: neutron has the internal_subnet with cidr start/end addresses
+    shell: . /root/stackrc; neutron subnet-show internal_v4 | grep
+           allocation_pools | egrep '172.16.255.2.*172.16.255.254'
+
+  - name: neutron has the internal_subnet with enable_dhcp True
+    shell: . /root/stackrc; neutron subnet-show internal_v4 | grep
+           enable_dhcp | grep True
+
+  - name: neutron has the internal_subnet with gateway_ip
+    shell: . /root/stackrc; neutron subnet-show internal_v4 | grep
+           gateway | grep gateway_ip
+
+  - name: neutron has the default router
+    shell: . /root/stackrc; neutron router-list | grep default
+
+# try ping internet for 5 minutes
+  - name: neutron network namespace can ping internet
+    shell: DHCP_NS=$( ip netns show | grep qdhcp- | awk '{print $1}' );
+           ip netns exec ${DHCP_NS} ping -c 5 8.8.8.8
+    register: result
+    until: result|success
+    retries: 30
+    delay: 10
+
+- name: network tests across all network nodes
+  hosts: network
+  tasks:
+  - name: neutron dnsmasq has 8.8.8.8 upstream resolver
+    shell: grep 8.8.8.8 /etc/dnsmasq.conf
+
+  - name: neutron dnsmasq has 8.8.4.4 upstream resolver
+    shell: grep 8.8.8.8 /etc/dnsmasq.conf
+
+  - name: neutron config has rabbit server
+    shell: egrep "rabbit_host = [0-9.]+" /etc/neutron/neutron.conf
+    when: rabbitmq.cluster == false
+
+  - name: neutron config has rabbit cluster servers
+    shell: egrep "rabbit_hosts = [0-9.]+:5672,[0-9.]+" /etc/neutron/neutron.conf
+    when: rabbitmq.cluster == true
+
+#  - name: iptables mangle rule in place to correct DHCP checksums
+#    shell: iptables -L -n -t mangle | egrep '^CHECKSUM\s+udp\s+--\s+0.0.0.0/0\s+0.0.0.0/0\s+udp dpt:68 CHECKSUM fill'

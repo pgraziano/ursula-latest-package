@@ -1,0 +1,32 @@
+---
+- name: cinder control process check installation
+  sensu_process_check: service={{ item }}
+  with_items:
+    - cinder-api
+    - cinder-scheduler
+  notify: restart sensu-client
+
+- name: cinder services check
+  sensu_check: name=check-cinder-services plugin=check-cinder-services.py
+               use_sudo=true args="-z {{ cinder.monitoring.sensu_checks.check_cinder_services.criticality }}"
+               only_on_ip="{{ undercloud_floating_ip | default(floating_ip) }}"
+  notify: restart sensu-client
+
+- include: nimble-monitoring.yml
+  when: sensu.nimble_san_ip is defined
+
+- include: v7k-monitoring.yml
+  when: v7k.enabled|default(false)
+
+
+- name: cinder metrics
+  template: src=etc/collectd/plugins/cinder.conf dest=/etc/collectd/plugins/cinder.conf
+  notify: restart collectd
+  when: collectd is defined and collectd.enabled|bool
+  tags: collectd
+
+- name: cinder sla metrics
+  sensu_metrics_check: name=cinder-sla-metrics plugin=metrics-os-api.py
+                       args='-S cinder --scheme {{ monitoring.graphite.cluster_prefix }}'
+                       only_on_ip="{{ undercloud_floating_ip | default(floating_ip) }}"
+  notify: restart sensu-client

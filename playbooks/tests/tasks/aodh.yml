@@ -1,0 +1,27 @@
+---
+- name: test aodh
+  hosts: controller[0]
+  vars:
+    event_alarm: test_event_alarm
+  tasks:
+  - name: Get image id for event alarm creation
+    shell: . /root/stackrc; openstack image show cirros -c id -f value
+    register: image_id
+
+  - name: create a event alarm
+    shell: >
+      . /root/stackrc;
+      ceilometer alarm-event-create --name {{ event_alarm }} --alarm-action 'log://'
+      --event-type image.update  -q 'traits.resource_id=string::{{ image_id.stdout }}'
+
+  - name: list a ceilomter alarm
+    shell: >
+      . /root/stackrc;
+      ceilometer alarm-list | grep {{ event_alarm }} | awk '{print $2}'
+    register: alarm_id
+
+  - name: show a ceilomter alarm
+    shell: . /root/stackrc; ceilometer alarm-show {{ alarm_id.stdout }}
+
+  - name: delete a ceilometer alarm
+    shell: . /root/stackrc; ceilometer alarm-delete {{ alarm_id.stdout }}

@@ -1,0 +1,26 @@
+---
+#FIXME swift-dispersion-populate does not support pointing to custom cafile.
+#This is an ugly hack to get self signed envs to work and should be fixed upstream.
+- name: add custom cafile support to swift simpleclient
+  replace:
+    dest: /usr/lib/python2.7/site-packages/swift/common/internal_client.py
+    regexp: 'urllib2\.urlopen\(req, timeout=timeout\)'
+    replace: >
+       urllib2.urlopen(req, cafile='{{ ssl.cafile }}', timeout=timeout)
+  when:
+    - client.self_signed_cert|default('False')|bool
+    - openstack_install_method == 'distro'
+  delegate_to: "{{ item }}"
+  with_items: "{{ groups['swiftnode'] }}"
+
+- name: run insecure swift dispersion populate
+  command: swift-dispersion-populate --insecure
+  when: client.self_signed_cert|default('False')|bool
+  run_once: True
+  delegate_to: "{{ groups['swiftnode_primary'][0] }}"
+
+- name: run swift dispersion populate
+  command: swift-dispersion-populate
+  when: not client.self_signed_cert|default('True')|bool
+  run_once: True
+  delegate_to: "{{ groups['swiftnode_primary'][0] }}"

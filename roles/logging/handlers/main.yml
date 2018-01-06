@@ -1,0 +1,21 @@
+---
+- name: refresh cert auths
+  command: update-ca-certificates
+  when: ursula_os == 'ubuntu'
+
+- name: restart logstash-forwarder
+  service: name=logstash-forwarder state=restarted must_exist=false
+
+- name: stop logstash-forwarder
+  service: name=logstash-forwarder state=stopped must_exist=false
+
+- name: start logstash-forwarder
+  service: name=logstash-forwarder state=started must_exist=false
+
+- name: restart rsyslog
+  service: name=rsyslog state=restarted
+
+- name: restart filebeat
+  service: name=filebeat state=restarted must_exist=false
+  failed_when: false
+

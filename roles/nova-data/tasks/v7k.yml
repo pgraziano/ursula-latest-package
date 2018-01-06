@@ -1,0 +1,20 @@
+---
+- name: install device-mapper-multipath packages
+  package: name="{{ v7k.multipath[ursula_os].package_name }}"
+  register: result
+  until: result|succeeded
+  retries: 5
+
+- name: generate multipath.conf
+  template: src=etc/multipath.conf dest=/etc/multipath.conf 
+            mode=0640
+            owner=root group=root
+  notify:
+    - restart multipath service
+
+- name: start multipath
+  service:
+    name: "{{ v7k.multipath[ursula_os].service_name }}"
+    state: started
+    enabled: True
+

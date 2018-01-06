@@ -1,0 +1,300 @@
+---
+swift_fqdn: "{{ fqdn }}"
+endpoints:
+  main: "{{ fqdn }}"
+  db: "{{ undercloud_floating_ip }}:3307"
+  rabbit: "{{ undercloud_floating_ip }}"
+  memcache: "{{ undercloud_floating_ip }}:11211"
+  identity_uri: https://{{ fqdn }}:35357
+  auth_uri: https://{{ fqdn }}:5000/v2.0
+  nova:
+    name: nova
+    type: compute
+    description: Compute Service
+    version: v2.1
+    url:
+      admin: https://{{ fqdn }}:8774
+      internal: https://{{ fqdn }}:8774
+      public: https://{{ fqdn }}:8774
+      path: v2.1/%(project_id)s
+    port:
+      backend_api: 9774
+      haproxy_api: 8774
+    haproxy:
+      health_check: 'httpchk GET /healthcheck'
+      balance: 'roundrobin'
+      prefer_primary_backend: False
+  placement:
+    name: placement
+    type: placement
+    description: Placement Service
+    version: v1.0
+    url:
+      admin: https://{{ fqdn }}:8778
+      internal: https://{{ fqdn }}:8778
+      public: https://{{ fqdn }}:8778
+    port:
+      backend_api: 9778
+      haproxy_api: 8778
+    haproxy:
+      health_check: 'tcp-check /'
+      balance: 'roundrobin'
+      prefer_primary_backend: False
+  glance:
+    name: glance
+    type: image
+    description: Image Service
+    url:
+      admin: https://{{ fqdn }}:9292
+      internal: https://{{ fqdn }}:9292
+      public: https://{{ fqdn }}:9292
+    port:
+      backend_api: 9393
+      haproxy_api: 9292
+    haproxy:
+      health_check: 'httpchk GET /healthcheck'
+      balance: 'source'
+      prefer_primary_backend: True
+  cinder:
+    name: cinder
+    type: volume
+    description: Volume Service
+    version: v1
+    url:
+      admin: https://{{ fqdn }}:8776
+      internal: https://{{ fqdn }}:8776
+      public: https://{{ fqdn }}:8776
+      path: v1/%(project_id)s
+    port:
+      backend_api: 9776
+      haproxy_api: 8776
+    haproxy:
+      health_check: 'httpchk GET /healthcheck'
+      balance: 'source'
+      prefer_primary_backend: False
+  cinderv2:
+    name: cinderv2
+    type: volume
+    description: 'Volume Service v2'
+    version: v2
+    url:
+      admin: https://{{ fqdn }}:8776
+      internal: https://{{ fqdn }}:8776
+      public: https://{{ fqdn }}:8776
+      path: v2/%(project_id)s
+  cinderv3:
+    name: cinderv3
+    type: volume
+    description: 'Volume Service v3'
+    version: v3
+    url:
+      admin: https://{{ fqdn }}:8776
+      internal: https://{{ fqdn }}:8776
+      public: https://{{ fqdn }}:8776
+      path: v3/%(project_id)s
+  keystone:
+    name: keystone
+    type: identity
+    description: 'Identity Service'
+    version: v2.0
+    url:
+      internal: https://{{ fqdn }}:5000
+      public: https://{{ fqdn }}:5000
+      admin: https://{{ fqdn }}:35357
+    port:
+      backend_api: 5002
+      haproxy_api: 5000
+    haproxy:
+      health_check: 'httpchk GET /healthcheck'
+      balance: 'roundrobin'
+      prefer_primary_backend: False
+      oidc_cookie: 'mod_auth_openidc_session prefix'
+  keystone_admin:
+    port:
+      backend_api: 35358
+      haproxy_api: 35357
+    haproxy:
+      health_check: 'httpchk GET /healthcheck'
+      balance: 'roundrobin'
+      prefer_primary_backend: False
+  keystone_legacy:
+    port:
+      backend_api: 5002
+      haproxy_api: 5001
+    haproxy:
+      health_check: 'httpchk GET /healthcheck'
+      balance: 'roundrobin'
+      prefer_primary_backend: False
+  keystonev3:
+    name: keystonev3
+    type: identity
+    description: 'Identity Service v3'
+    version: v3
+    url:
+      internal: https://{{ fqdn }}:5000
+      public: https://{{ fqdn }}:5000
+      admin: https://{{ fqdn }}:35357
+    port:
+      backend_api: 5002
+      haproxy_api: 5000
+    haproxy:
+      health_check: 'httpchk GET /healthcheck'
+      balance: 'roundrobin'
+      prefer_primary_backend: False
+  novnc:
+    url:
+      admin: https://{{ fqdn }}:6080
+      internal: https://{{ fqdn }}:6080
+      public: https://{{ fqdn }}:6080
+    port:
+      backend_api: 6081
+      haproxy_api: 6080
+    haproxy:
+      health_check: 'tcp-check /'
+      balance: 'source'
+      prefer_primary_backend: True
+  neutron:
+    name: neutron
+    type: network
+    description: 'Network Service'
+    url:
+      admin: https://{{ fqdn }}:9696
+      internal: https://{{ fqdn }}:9696
+      public: https://{{ fqdn }}:9696
+    port:
+      backend_api: 9797
+      haproxy_api: 9696
+    haproxy:
+      health_check: 'httpchk /'
+      balance: 'source'
+      prefer_primary_backend: False
+  heat:
+    name: heat
+    type: orchestration
+    description: 'Heat Orchestration API'
+    version: v1
+    url:
+      admin: https://{{ fqdn }}:8004
+      internal: https://{{ fqdn }}:8004
+      public: https://{{ fqdn }}:8004
+      path: v1/%(project_id)s
+    port:
+      backend_api: 8005
+      haproxy_api: 8004
+    haproxy:
+      health_check: 'httpchk GET /healthcheck'
+      balance: 'source'
+      prefer_primary_backend: False
+  heat_cfn:
+    name: heat-cfn
+    type: cloudformation
+    description: 'Heat Cloudformation API'
+    version: v1
+    url:
+      admin: https://{{ fqdn }}:8000
+      internal: https://{{ fqdn }}:8000
+      public: https://{{ fqdn }}:8000
+    port:
+      backend_api: 8001
+      haproxy_api: 8000
+    haproxy:
+      health_check: 'httpchk GET /healthcheck'
+      balance: 'source'
+      prefer_primary_backend: False
+  ceilometer:
+    name: ceilometer
+    type: metering
+    description: 'Telemetry Service'
+    url:
+      admin: https://{{ fqdn }}:8777
+      internal: https://{{ fqdn }}:8777
+      public: https://{{ fqdn }}:8777
+    port:
+      backend_api: 9777
+      haproxy_api: 8777
+    haproxy:
+      health_check: 'tcp-check /'
+      balance: 'source'
+      prefer_primary_backend: False
+  magnum:
+    name: magnum
+    type: container
+    description: 'Magnum Container Service'
+    url:
+      admin: https://{{ fqdn }}:9511
+      internal: https://{{ fqdn }}:9511
+      public: https://{{ fqdn }}:9511
+    port:
+      backend_api: 9512
+      haproxy_api: 9511
+    haproxy:
+      health_check: 'httpchk /'
+      balance: 'source'
+      prefer_primary_backend: False
+  ironic:
+    name: ironic
+    type: baremetal
+    description: 'Ironic bare metal provisioning service'
+    version: v1
+    url:
+      admin: https://{{ fqdn }}:6385
+      internal: https://{{ fqdn }}:6385
+      public: https://{{ fqdn }}:6385
+    port:
+      backend_api: 6384
+      haproxy_api: 6385
+      internal_ipxe: 6383
+    haproxy:
+      health_check: 'httpchk GET /v1'
+      balance: 'source'
+      prefer_primary_backend: False
+  swift:
+    name: swift
+    type: object-storage
+    haproxy_vip: "{{ swift_fqdn }}"
+    description: 'Object Storage Service'
+    version: v1
+    url:
+      admin: https://{{ swift_fqdn }}:8090
+      internal: https://{{ swift_fqdn }}:8090
+      public: https://{{ swift_fqdn }}:8090
+      path: v1/%(project_id)s
+    port:
+      haproxy_api: 8090
+      cinder_backup: 8091
+      proxy_api: 8080
+    haproxy:
+      health_check: 'httpchk HEAD /healthcheck HTTP/1.0'
+      balance: 'roundrobin'
+      prefer_primary_backend: False
+      maxconn: 4096
+  aodh:
+    name: aodh
+    type: alarming
+    description: 'Alarming Service'
+    url:
+      admin: https://{{ fqdn }}:8042
+      internal: https://{{ fqdn }}:8042
+      public: https://{{ fqdn }}:8042
+    port:
+      backend_api: 8043
+      haproxy_api: 8042
+    haproxy:
+      health_check: 'tcp-check /'
+      balance: 'source'
+      prefer_primary_backend: False
+  barbican:
+    name: barbican
+    type: key-management
+    description: Key Management Service
+    url:
+      admin: https://{{ fqdn }}:9311
+      internal: https://{{ fqdn }}:9311
+      public: https://{{ fqdn }}:9311
+    port:
+      backend_api:  9312
+      haproxy_api:  9311
+    haproxy:
+      health_check: 'tcp-check /'
+      balance: 'source'
+      prefer_primary_backend: True

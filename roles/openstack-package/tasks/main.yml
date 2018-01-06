@@ -1,0 +1,54 @@
+---
+- name: "install {{ project_name }} package"
+  apt: pkg="{{ package_name|default(openstack_package.package_name) }}"
+       update_cache=yes cache_valid_time=3600
+  register: project_package
+  until: project_package|succeeded
+  retries: 5
+
+- name: set code has changed fact
+  set_fact:
+    code_has_changed: True
+  when: project_package | changed
+
+- name: setup openstack current base path
+  file:
+    dest: /opt/openstack/current
+    state: directory
+
+- name: test whether current project symlink exists
+  stat:
+    path: /opt/openstack/current/{{ project_name }}
+  register: symlink_exists
+
+- name: setup current symlink
+  file:
+    src: "{{ openstack_package.virtualenv_base }}/{{ project_name }}"
+    dest: /opt/openstack/current/{{ project_name }}
+    state: link
+  when: not symlink_exists.stat.exists or upgrade | default(false) | bool
+
+- name: ensure project config directory exists
+  file: name="/etc/{{ project_name }}" state=directory
+  when: openstack_package.rootwrap|bool
+
+- name: stat rootwrap.d
+  stat: path="/etc/{{ project_name }}/rootwrap.d"
+  register: st
+  when: openstack_package.rootwrap|bool
+
+- name: remove rootwrap.d if a directory
+  file: dest="/etc/{{ project_name }}/rootwrap.d" state=absent
+  when: openstack_package.rootwrap|bool and st.stat is defined and st.stat.isdir
+
+- name: "setup {{ project_name }} rootwrap"
+  file: src="/opt/openstack/current/{{ project_name }}/etc/{{ project_name }}/rootwrap.d"
+        dest="/etc/{{ project_name }}/rootwrap.d" state=link
+  when: openstack_package.rootwrap|bool
+
+- name: update-alternatives
+  alternatives: name={{ item }}
+                path={{ openstack_package.virtualenv_base }}/{{ project_name }}/bin/{{ item }}
+                link=/usr/local/bin/{{ item }}
+  with_items: "{{ alternatives|default([]) }}"
+  when: alternatives is defined

@@ -1,0 +1,182 @@
+---
+- name: install bcache dependencies
+  package: name={{ item }} state=present
+  with_items: "{{ ceph.bcache_pkgs }}"
+  register: result
+  until: result|succeeded
+  retries: 5
+
+- name: Create root hybrid-bucket
+  shell: ceph osd crush add-bucket {{ hybrid_pool }} root
+  register: result
+  changed_when: result.stdout |search("added bucket")
+  when: inventory_hostname == (play_hosts | intersect(groups['ceph_osds_hybrid']))[0]
+
+# Create crush ruleset for the hybrid root bucket
+- name: Create crush ruleset hybrid root bucket
+  shell: ceph osd crush rule create-simple {{ hybrid_ruleset }} {{ hybrid_pool }} host firstn
+  register: result
+  changed_when: not result.stdout |search("already exists")
+  when: inventory_hostname == (play_hosts | intersect(groups['ceph_osds_hybrid']))[0]
+
+- name: Create osd host bucket
+  shell: ceph osd crush add-bucket {{ ansible_hostname }} host
+  register: result
+  changed_when: result.stdout |search("added bucket")
+
+- name: Move host bucket under root bucket
+  shell: ceph osd crush move {{ ansible_hostname }} root={{ hybrid_pool }}
+  register: result
+  changed_when: result.stdout |search("moved item")
+
+# we check for journal and bcache partitions to skip destructive tasks below
+- name: check if journal partitions exist on ssd device
+  shell: "parted --script /dev/{{ ceph.bcache_ssd_device }} print | egrep -sq 'journal'"
+  failed_when: false
+  changed_when: false
+  register: journal_partitions
+
+- name: check if bcache partition exists on ssd device
+  shell: "parted --script /dev/{{ ceph.bcache_ssd_device }} print | egrep -sq 'bcache'"
+  failed_when: false
+  changed_when: false
+  register: bcache_partition
+
+- name: initialize ceph_init_ssd flag
+  set_fact:
+    ceph_init_ssd: false
+
+- name: set ceph_init_ssd flag
+  set_fact:
+    ceph_init_ssd: true
+  when:
+    - journal_partitions.rc != 0
+    - bcache_partition.rc != 0
+
+- name: initialize partition_connector flag
+  set_fact:
+    partition_connector: ''
+
+- name: set partition_connector flag for nvme
+  set_fact:
+    partition_connector: 'p'
+  when: ceph.bcache_ssd_device|search('nvme')
+
+# block initial ssd disk
+- block:
+  - name: mklabel gpt
+    command: "parted -s /dev/{{ ceph.bcache_ssd_device }} mklabel gpt"
+
+  - name: make journal partitions
+    command: parted --script /dev/{{ ceph.bcache_ssd_device }}
+             mkpart journal {{ (item|int * 10000) + 1 }}MiB {{ (item|int * 10000) + 10000 }}MiB
+    with_sequence: "start=0 end={{ ceph.disks|length - 1 }}"
+
+  - name: make bcache partition
+    command: parted --script /dev/{{ ceph.bcache_ssd_device }}
+             mkpart bcache {{ ceph.disks|length * 10000 + 1 }}MiB 100%
+
+  - name: make-bcache -C <ssd device>
+    command: make-bcache -C /dev/{{ ceph.bcache_ssd_device }}{{ partition_connector }}{{ ceph.disks|length + 1 }}
+  when: ceph_init_ssd
+
+- name: make-bcache -B <sata disks>
+  command: make-bcache -B /dev/{{ item }}
+           creates=/sys/block/{{ item }}/bcache
+  register: result_bcache_backs
+  with_items: "{{ ceph.disks }}"
+
+- name: determine bcache uuid SSD
+  shell: bcache-super-show /dev/{{ ceph.bcache_ssd_device }}{{ partition_connector }}{{ ceph.disks|length + 1 }} |
+         grep cset.uuid | awk '{print $2}'
+  changed_when: false
+  register: bcache_uuid
+
+# deal with bcache devices when back devices are changed
+- block:
+  - name: udevadm trigger
+    command: "udevadm trigger"
+
+  - name: wait for bcache directories to be created before running next task
+    wait_for: path=/sys/block/bcache{{ item }} timeout=30
+    with_sequence: "start=0 end={{ ceph.disks|length - 1 }}"
+
+  - name: get changed bcaches
+    shell: grep -oP "bcache\d+" /sys/block/{{ item.item }}/bcache/dev/uevent
+    when: item.changed
+    with_items: "{{ result_bcache_backs.results }}"
+    register: result_cache_nums
+
+  - name: set cache mode to writeback
+    shell: echo writeback > /sys/block/{{ item.stdout }}/bcache/cache_mode
+    when: item.changed
+    with_items: "{{ result_cache_nums.results }}"
+
+  - name: attach to bcache devices
+    shell: echo {{ bcache_uuid.stdout }} > /sys/block/{{ item.stdout }}/bcache/attach
+    when: item.changed
+    with_items: "{{ result_cache_nums.results }}"
+
+  - name: make sure cache tier is ok
+    wait_for: path=/sys/block/{{ item.stdout }}/bcache/cache timeout=10
+    when: item.changed
+    with_items: "{{ result_cache_nums.results }}"
+
+  - name: make xfs on bcache devices
+    command: mkfs -t xfs -f -i size=2048 -- /dev/{{ item.stdout }}
+    when: item.changed
+    with_items: "{{ result_cache_nums.results }}"
+
+  - name: make sure all uuids of bcaches exist
+    shell: test `ls -l /dev/disk/by-uuid/ |grep bcache |wc -l` -eq "{{ ceph.disks|length }}"
+    register: result
+    until: result.rc == 0
+    retries: 6
+    delay: 10
+  when: result_bcache_backs.changed
+
+# deal with bcache devices when ssd disk is changed
+- block:
+  - name: attach to bcache devices SSD
+    shell: echo {{ bcache_uuid.stdout }} > /sys/block/bcache{{ item }}/bcache/attach
+           creates=/sys/block/bcache{{ item }}/bcache/cache
+    with_sequence: "start=0 end={{ ceph.disks|length - 1 }}"
+
+  - name: make sure cache tier is ok
+    wait_for: path=/sys/block/bcache{{ item }}/bcache/cache timeout=10
+    with_sequence: "start=0 end={{ ceph.disks|length - 1 }}"
+  when: ceph_init_ssd
+
+- name: activate new osds(hybrid)
+  ceph_bcache:
+    disks: "{{ ceph.disks }}"
+    ssd_device: "{{ ceph.bcache_ssd_device }}"
+    ceph_init_ssd: "{{ hostvars[item].ceph_init_ssd }}"
+    journal_guid: "{{ ceph.journal_guid }}"
+  delegate_to: "{{ item }}"
+  with_items: "{{ groups['ceph_osds_hybrid']|default([])|intersect(play_hosts) }}"
+  when:
+    - inventory_hostname == (play_hosts | intersect(groups['ceph_osds_hybrid']))[0]
+    - hostvars[item].ceph_init_ssd or hostvars[item].result_bcache_backs.changed
+
+- name: make sure ceph-osd-all started
+  service: name=ceph-osd-all state=started
+
+# pool pg number is based on osd amount
+# we should create pool when all osds are up
+- name: create openstack pool
+  ceph_pool:
+    pool_name: "{{ hybrid_pool }}"
+    osds: "{{ groups['ceph_osds_hybrid']|length * ceph.disks|length }}"
+    target_pgs_per_osd: "{{ ceph.target_pgs_per_osd }}"
+    max_pgs_per_osd: "{{ ceph.max_pgs_per_osd }}"
+    pool_size: "{{ ceph.pool_default_size }}"
+  delegate_to: "{{ groups['ceph_monitors'][0] }}"
+  when: inventory_hostname == (play_hosts | intersect(groups['ceph_osds_hybrid']))[0]
+
+# not sure is there a better way to get ruleset id
+- name: set ruleset for pool
+  shell: ceph osd pool set {{ hybrid_pool }} crush_ruleset
+         $(ceph osd crush rule dump |grep {{ hybrid_ruleset }} -A1 |grep -oP '\d+')
+  delegate_to: "{{ groups['ceph_monitors'][0] }}"
+  when: inventory_hostname == (play_hosts | intersect(groups['ceph_osds_hybrid']))[0]

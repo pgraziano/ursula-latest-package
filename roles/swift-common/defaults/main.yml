@@ -1,0 +1,139 @@
+---
+swift:
+  enabled: False
+  services:
+    swift_account: "{{ openstack_meta.swift.services.swift_account[ursula_os] }}"
+    swift_account_auditor: "{{ openstack_meta.swift.services.swift_account_auditor[ursula_os] }}"
+    swift_account_reaper: "{{ openstack_meta.swift.services.swift_account_reaper[ursula_os] }}"
+    swift_account_replicator: "{{ openstack_meta.swift.services.swift_account_replicator[ursula_os] }}"
+    swift_container: "{{ openstack_meta.swift.services.swift_container[ursula_os] }}"
+    swift_container_auditor: "{{ openstack_meta.swift.services.swift_container_auditor[ursula_os] }}"
+    swift_container_replicator: "{{ openstack_meta.swift.services.swift_container_replicator[ursula_os] }}"
+    swift_container_sync: "{{ openstack_meta.swift.services.swift_container_sync[ursula_os] }}"
+    swift_container_updater: "{{ openstack_meta.swift.services.swift_container_updater[ursula_os] }}"
+    swift_object: "{{ openstack_meta.swift.services.swift_object[ursula_os] }}"
+    swift_object_auditor: "{{ openstack_meta.swift.services.swift_object_auditor[ursula_os] }}"
+    swift_object_expirer: "{{ openstack_meta.swift.services.swift_object_expirer[ursula_os] }}"
+    swift_object_replicator: "{{ openstack_meta.swift.services.swift_object_replicator[ursula_os] }}"
+    swift_object_updater: "{{ openstack_meta.swift.services.swift_object_updater[ursula_os] }}"
+    swift_proxy: "{{ openstack_meta.swift.services.swift_proxy[ursula_os] }}"
+  logging:
+    debug: False
+  hash_path_prefix: a57b0dfd61b5fe3a
+  disks:
+    - disk: sdb
+  allow_versions: True
+  distro:
+    dependent_packages:
+      - lshw
+    project_packages:
+      - openstack-selinux
+      - openstack-swift
+      - openstack-swift-proxy
+      - openstack-swift-account
+      - openstack-swift-container
+      - openstack-swift-object
+  source:
+    rev: newton-eol
+    upper_constraints: '{{ openstack_meta.upper_constraints }}'
+    python_dependencies:
+      - { name: keystonemiddleware }
+      - { name: python-swiftclient }
+    system_dependencies:
+      ubuntu:
+        - liberasurecode-dev
+      rhel:
+        - liberasurecode-devel
+  alternatives:
+    - swift-account-audit
+    - swift-account-auditor
+    - swift-account-info
+    - swift-account-reaper
+    - swift-account-replicator
+    - swift-account-server
+    - swift-config
+    - swift-container-auditor
+    - swift-container-info
+    - swift-container-reconciler
+    - swift-container-replicator
+    - swift-container-server
+    - swift-container-sync
+    - swift-container-updater
+    - swift-dispersion-populate
+    - swift-dispersion-report
+    - swift-drive-audit
+    - swift-form-signature
+    - swift-get-nodes
+    - swift-init
+    - swift-object-auditor
+    - swift-object-expirer
+    - swift-object-info
+    - swift-object-replicator
+    - swift-object-server
+    - swift-object-updater
+    - swift-oldies
+    - swift-orphans
+    - swift-proxy-server
+    - swift-recon
+    - swift-reconciler-enqueue
+    - swift-recon-cron
+    - swift-ring-builder
+    - swift-temp-url
+  logs:
+    - paths:
+        - /var/log/swift/account.log
+      fields:
+        type: openstack
+        tags: swift,swift-account
+    - paths:
+        - /var/log/swift/container.log
+      fields:
+        type: openstack
+        tags: swift,swift-container
+    - paths:
+        - /var/log/swift/object.log
+      fields:
+        type: openstack
+        tags: swift,swift-object
+    - paths:
+        - /var/log/swift/proxy.log
+      fields:
+        type: openstack
+        tags: swift,swift-proxy
+    - paths:
+        - /var/log/swift/swift.log
+      fields:
+        type: openstack
+        tags: swift
+  tuning:
+      net.netfilter.nf_conntrack_max: 262144
+      net.ipv4.tcp_syncookies: 0
+      net.ipv4.tcp_tw_recycle: 1
+      net.ipv4.tcp_tw_reuse: 1
+  # NOTE: Make sure you update the swifttool version in both places
+  swifttool_dir: 'swifttool'
+  swifttool_url: https://github.com/blueboxgroup/swifttool/archive/v0.0.2.dev27.tar.gz
+  swifttool_version: 'v0.0.2.dev27'
+  swifttool_method: 'git'
+  swifttool_pypi_mirror: https://pypi-mirror.openstack.blueboxgrid.com/bluebox/openstack
+  monitoring:
+    sensu_checks:
+      check_ucarp_procs:
+        criticality: 'critical'
+      fstab_mounts:
+        criticality: 'critical'
+      check_swift_dispersion:
+        criticality: 'critical'
+  rsync:
+      object:
+        max_connections: 8
+      container:
+        max_connections: 4
+      account:
+        max_connections: 2
+  cluster:
+        no_workers: 10
+        no_replicators: 2
+        no_auditors: 1
+        no_updaters: 1
+  venv_dir: '/opt/openstack/current/swift'

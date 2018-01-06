@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+
+set -ex
+
+BINDIR=$(dirname $0)
+
+if ! grep Ubuntu /etc/lsb-release; then
+  echo "This is not an Ubuntu system... Aborting."
+  exit 1
+fi
+
+apt-get update
+DEBIAN_FRONTEND=noninteractive apt-get install --yes python-pip python-dev libxml2-dev libxslt-dev libffi-dev
+apt-get remove --yes ansible || echo "ok"
+
+pip install -U -r $BINDIR/../requirements.txt
+
+echo -e "\nInstallation complete!\n"

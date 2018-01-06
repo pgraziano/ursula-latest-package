@@ -1,0 +1,10 @@
+---
+dependencies:
+  - role: apt-repos
+    repos:
+      - repo: 'deb {{ apt_repos.cloud_archive.repo }} {{ ansible_distribution_release }}-updates/mitaka main'
+        key_package: ubuntu-cloud-keyring
+    when: ursula_os == 'ubuntu'
+  - role: ceph-config
+  - role: monitoring-common
+    when: monitoring.enabled|default(True)|bool

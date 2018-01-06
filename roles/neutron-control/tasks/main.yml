@@ -1,0 +1,73 @@
+---
+- name: neutron api cache dir
+  file: dest=/var/cache/neutron/api owner=neutron state=directory
+
+- block:
+  - name: install neutron-server service ( ubuntu )
+    upstart_service:
+      name: "{{ item.name }}"
+      user: "{{ item.user }}"
+      envs: "{{ item.envs }}"
+      cmd: "{{ item.cmd }}"
+      config_dirs: "{{ item.config_dirs }}"
+      config_files: "{{ item.config_files }}"
+    with_items:
+      - "{{ neutron.services.neutron_server }}"
+  when: ursula_os == 'ubuntu'
+
+- block:
+  - name: install neutron-server service (rhel)
+    systemd_service:
+      name: "{{ item.name }}"
+      description: "{{ item.desc }}"
+      type: "{{ item.type }}"
+      notify_access: "{{ item.notify_access|default(omit) }}"
+      user: "{{ item.user }}"
+      environments: "{{ item.environments }}"
+      cmd: "{{ item.cmd }}"
+      config_dirs: "{{ item.config_dirs }}"
+      config_files: "{{ item.config_files }}"
+      restart: "{{ item.restart }}"
+      kill_mode: "{{ item.kill_mode }}"
+    with_items:
+      - "{{ neutron.services.neutron_server }}"
+  when: ursula_os == 'rhel'
+
+- name: stop neutron service before db sync
+  service:
+    name: "{{ neutron.services.neutron_server.name }}"
+    state: stopped
+  when: database_create.changed or force_sync|default('false')|bool
+  tags: db-migrate
+
+- name: sync neutron database
+  command: neutron-db-manage --config-file /etc/neutron/neutron.conf \
+           --config-file /etc/neutron/plugins/ml2/ml2_plugin.ini upgrade head
+  when: database_create.changed or force_sync|default('false')|bool
+  run_once: true
+  changed_when: true
+  notify: restart neutron services
+  # we want this to always be changed so that it can notify the service restart
+  tags: db-migrate
+
+- name: trigger restart on upgrades
+  debug:
+    msg: "Triggering service restart for upgrade"
+  changed_when: True
+  notify: restart neutron services
+  when: code_has_changed | default('False') | bool and
+        upgrade | default('False') | bool
+
+- meta: flush_handlers
+
+- name: start neutron-server
+  service:
+    name: "{{ neutron.services.neutron_server.name }}"
+    state: started
+    enabled: true
+
+- include: monitoring.yml
+  tags:
+    - monitoring
+    - common
+  when: monitoring.enabled|default('True')|bool

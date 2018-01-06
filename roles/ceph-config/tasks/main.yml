@@ -1,0 +1,74 @@
+---
+- name: create ceph directory
+  file:
+    path: /etc/ceph
+    state: directory
+
+# generate uuid for ceph.conf
+# truncate is to get rid of the newline
+- name: generate fsid file
+  shell: uuidgen > /etc/ceph/fsid && truncate -s -1 /etc/ceph/fsid
+         creates=/etc/ceph/fsid
+  run_once: true
+  delegate_to: "{{ groups['ceph_monitors'][0] }}"
+
+- name: fetch contents of fsid file
+  slurp: path=/etc/ceph/fsid
+  run_once: true
+  delegate_to: "{{ groups['ceph_monitors'][0] }}"
+  register: fsid_file
+
+# for redundancy, and if the hosts in mons get reordered
+- name: copy fsid to all hosts
+  copy:
+    dest: "{{ fsid_file['source'] }}"
+    content: "{{ fsid_file['content'] | b64decode }}"
+
+# generate uuid for cinder.conf and secret.xml
+# truncate is to get rid of the newline
+- name: generate cinder uuid
+  shell: uuidgen > /etc/ceph/cinder_uuid && truncate -s -1 /etc/ceph/cinder_uuid
+         creates=/etc/ceph/cinder_uuid
+  run_once: true
+  delegate_to: "{{ groups['ceph_monitors'][0] }}"
+
+- name: fetch contents of uuid file
+  slurp: path=/etc/ceph/cinder_uuid
+  run_once: true
+  delegate_to: "{{ groups['ceph_monitors'][0] }}"
+  register: cinder_uuid_file
+
+# for redundancy, and if the hosts in mons get reordered
+- name: copy uuid to all hosts
+  copy:
+    dest: "{{ cinder_uuid_file['source'] }}"
+    content: "{{ cinder_uuid_file['content'] | b64decode }}"
+
+- name: check if ceph.conf exists
+  stat: path=/etc/ceph/ceph.conf
+  register: stat_ceph_conf
+
+- name: generate ceph configuration file
+  template: src=etc/ceph/ceph.conf
+            dest=/etc/ceph/ceph.conf
+            owner=root
+            group=root
+            mode=0644
+  register: result_ceph_conf
+
+# set restart flag for ceph in case we fail before restarting ceph
+# we dont' restart ceph for new osd node, because that will block scale-out
+- block:
+  - name: set ceph restart flag
+    copy: dest=/etc/ansible/facts.d/restart_ceph.fact content='true'
+
+  - name: re-read facts after adding custom fact
+    setup: filter=ansible_local
+  when:
+    - "'ceph_monitors' in group_names or 'ceph_osds' in group_names"
+    - stat_ceph_conf.stat.exists
+    - result_ceph_conf.changed
+
+- include: logging.yml
+  tags: ['logrotate', 'logging']
+  when: logging.enabled|default(true)

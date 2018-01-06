@@ -1,0 +1,40 @@
+---
+- name: checking network {{ item.name }}
+  environment:
+    PYTHONPATH: "{{ basevenv_lib_dir|default(omit) }}"
+  os_networks_facts:
+    name: "{{ item.name }}"
+    auth:
+      auth_url: "{{ endpoints.auth_uri }}"
+      project_name: admin
+      username: admin
+      password: "{{ secrets.admin_password }}"
+    validate_certs: "{{ validate_certs|default(omit) }}"
+
+- block:
+  - name: ensure provider physical netowrk
+    assert:
+      that: openstack_networks[0]['provider:physical_network'] == item.provider_physical_network
+      msg: "Could not find matching attribute for provider:physical_network."
+
+  - name: ensure segmentation ID
+    assert:
+      that: openstack_networks[0]['provider:segmentation_id'] == item.segmentation_id
+      msg: "Could not find matching attribute for provider:segmentation_id."
+
+  - name: ensure provider network type
+    assert:
+      that: openstack_networks[0]['provider:network_type'] == item.network_type
+      msg: "Could not find matching attribute for provider:network_type."
+
+  - name: ensure router external
+    assert:
+      that: openstack_networks[0]['router:external'] == item.external
+      msg: "Could not find matching attribute for router:external."
+
+  - name: ensure shared
+    assert:
+      that: openstack_networks[0]['shared'] == item.shared
+      msg: "Could not find matching attribute for shared."
+
+  when: openstack_networks[0] is defined

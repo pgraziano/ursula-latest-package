@@ -1,0 +1,3 @@
+---
+- name: restart sensu-client missing ok
+  service: name=sensu-client state=restarted must_exist=false

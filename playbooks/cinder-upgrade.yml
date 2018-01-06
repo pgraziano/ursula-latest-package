@@ -1,0 +1,90 @@
+---
+- name: upgrade cinder control
+  hosts: controller
+  max_fail_percentage: 1
+  tags:
+    - cinder
+    - cinder-control
+
+  pre_tasks:
+    - name: dump cinder db
+      mysql_db:
+        name: cinder
+        state: dump
+        target: /backup/cinder-preupgrade.sql
+      run_once: True
+      tags: dbdump
+      delegate_to: "{{ groups['db'][0] }}"
+    - name: disable cinder from haproxy
+      file:
+        path: /etc/cinder/healthcheck_disable
+        state: touch
+    - name: wait for haproxy to notice
+      pause:
+        seconds: 8
+
+  roles:
+    - role: stop-services
+      services:
+        - cinder-api
+
+    - role: cinder-control
+      force_sync: true
+      restart: True
+      database_create:
+        changed: false
+  environment: "{{ env_vars|default({}) }}"
+
+- name: restart cinder-api at updated port
+  hosts: controller
+  serial: 1
+  max_fail_percentage: 1
+  tags:
+    - cinder
+    - cinder-control
+  roles:
+    - role: endpoints
+  tasks:
+    - name: restart cinder-api service
+      service:
+        name: cinder-api
+        state: restarted
+
+    - name: discover nova-placement haproxy config entry
+      command: grep -q "^frontend placement" /etc/haproxy/haproxy.cfg
+      register: nova_placement
+      failed_when: false
+
+    - name: fixup cinder backend port in haproxy
+      replace:
+        dest: /etc/haproxy/haproxy.cfg
+        regexp: "8778 check maxconn"
+        replace: "{{ endpoints.cinder.port.backend_api }} check maxconn"
+        backup: yes
+      when: not nova_placement|succeeded
+
+    - name: reload haproxy service
+      service:
+        name: haproxy
+        state: reloaded
+
+    - name: enable cinder for haproxy
+      file:
+        path: /etc/cinder/healthcheck_disable
+        state: absent
+
+    - name: wait for haproxy to notice
+      pause:
+        seconds: 8
+
+- name: upgrade cinder data software
+  hosts: cinder_volume
+  max_fail_percentage: 1
+  tags:
+    - cinder
+    - cinder-volume
+
+  roles:
+    - role: cinder-data
+      restart: True
+  environment: "{{ env_vars|default({}) }}"

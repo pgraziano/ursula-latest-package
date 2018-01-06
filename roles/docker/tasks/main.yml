@@ -1,0 +1,15 @@
+---
+- name: install docker
+  apt: pkg=lxc-docker
+  when: not docker.version
+  register: result
+  until: result|succeeded
+  retries: 5
+
+- name: install docker
+  apt: pkg=lxc-docker-{{ docker.version }}
+  register: result
+  until: result|succeeded
+  retries: 5
+
+  when: docker.version

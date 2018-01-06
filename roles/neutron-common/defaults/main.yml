@@ -1,0 +1,173 @@
+---
+project_name: neutron
+neutron:
+  services:
+    neutron_server: "{{ openstack_meta.neutron.services.neutron_server[ursula_os] }}"
+    neutron_dhcp_agent: "{{ openstack_meta.neutron.services.neutron_dhcp_agent[ursula_os] }}"
+    neutron_l3_agent: "{{ openstack_meta.neutron.services.neutron_l3_agent[ursula_os] }}"
+    neutron_openvswitch_agent: "{{ openstack_meta.neutron.services.neutron_openvswitch_agent[ursula_os] }}"
+    neutron_linuxbridge_agent: "{{ openstack_meta.neutron.services.neutron_linuxbridge_agent[ursula_os] }}"
+    neutron_metadata_agent: "{{ openstack_meta.neutron.services.neutron_metadata_agent[ursula_os] }}"
+    neutron_lbaasv2_agent: "{{ openstack_meta.neutron.services.neutron_lbaasv2_agent[ursula_os] }}"
+  jellyroll: False
+  enable_fatal_deprecations: True
+  l2_population: False
+  extension_drivers:
+    - port_security
+  advertise_mtu: False
+  path_mtu: 1550
+  global_physnet_mtu: 1550
+  max_subnet_host_routes: 20
+  vxlan:
+    # The multicast prefix to use for broadcast, multicast and unknown frames
+    # Consider using a larger prefix (e.g. a /24) on deployments with a
+    # dedicated network infrastructure between nodes. For example with
+    # group_prefix = 239.1.1.0/24, the last eight bits of the VXLAN VNID would
+    # be used pick a group address within this prefix. This is a compromise
+    # between network resource allocation, and efficient delivery to BUM
+    # frames.
+    group_prefix: 239.1.1.1
+    # If using multicast, limit the L3 diameter of VXLAN multicast traffic by
+    # specifying the TTL on VXLAN packets. By default we limit the TTL to one,
+    # so VXLAN multicast frames are only used on the local subnet. If nodes
+    # where spread between multiple subnets and intervening routers are
+    # configured to route multicast, configure this value to the longest L3
+    # path between nodes within the deployment.
+    ttl: 1
+    vni_ranges: 1:4095
+  heartbeat_timeout_threshold: 30
+  allow_overlapping_ips: False
+  api_workers: 3
+  metadata_workers: 3
+  ha_keepalive_threads: 10
+  overlay_ip_version: 4
+  agent_down_time: 20
+  report_interval: 4
+  arp_responder: True
+  vxlan_reset:
+    enabled: False
+  state_path: "/var/lib/neutron"
+  dhcp_dns_servers:
+    - 8.8.8.8
+    - 8.8.4.4
+  service_plugins:
+    - neutron.services.l3_router.l3_router_plugin.L3RouterPlugin
+  enable_flat_networks: False
+  l3ha:
+    enabled: False
+    max_agents: 2
+    min_agents: 2
+    cidr: 169.254.192.0/18
+    password: password
+    interval: 2
+  # Tunneling encapsulations enabled e.g. gre, vxlan
+  # Including any tunnels will enable tunnling
+  tunnel_types: []
+  lbaas:
+    # enabled can be "smart" or true / false. Smart will turn on lbaas if
+    # controllers are dedicated.
+    enabled: smart
+    haproxy:
+      maxconn: 200000
+      # timeouts default to ms unless explicitly defined
+      # default values are connect 5000, client 50000, server 50000
+      timeouts:
+        connect: 5000
+        client: 50000
+        server: 50000
+    interface_driver: neutron.agent.linux.interface.BridgeInterfaceDriver
+    service_plugin:
+      - neutron_lbaas.services.loadbalancer.plugin.LoadBalancerPluginv2
+    service_provider: LOADBALANCERV2:Haproxy:neutron_lbaas.drivers.haproxy.plugin_driver.HaproxyOnHostPluginDriver:default
+  distro:
+    project_packages:
+      - openstack-neutron
+      - openstack-neutron-linuxbridge
+    lbaas_v2:
+      project_packages:
+        - openstack-neutron-lbaas
+    python_post_dependencies: []
+  # Example for distro/source:
+  # python_post_dependencies:
+  #   - name: python-memcached
+  #     version: 1.58
+  #     pip_extra_args: '--extra-index-url https://pypi-mirror.openstack.blueboxgrid.com/root/pypi...'
+  source:
+    rev: newton-eol
+    upper_constraints: '{{ openstack_meta.upper_constraints }}'
+    python_dependencies:
+      - { name: "git+git://github.com/openstack/neutron-lbaas.git@newton-eol#egg=neutron-lbaas" }
+      - { name: PyMySQL }
+    python_post_dependencies: []
+    system_dependencies:
+      ubuntu: []
+        #- conntrack
+      rhel: []
+        #- conntrack
+  alternatives:
+    - neutron-db-manage
+    - neutron-debug
+    - neutron-dhcp-agent
+    - neutron-keepalived-state-change
+    - neutron-l3-agent
+    - neutron-lbaasv2-agent
+    - neutron-linuxbridge-agent
+    - neutron-metadata-agent
+    - neutron-metering-agent
+    - neutron-netns-cleanup
+    - neutron-ns-metadata-proxy
+    - neutron-openvswitch-agent
+    - neutron-ovs-cleanup
+    - neutron-rootwrap
+    - neutron-rootwrap-daemon
+    - neutron-rootwrap-xen-dom0
+    - neutron-sanity-check
+    - neutron-server
+    - neutron-sriov-nic-agent
+    - neutron-usage-audit
+  logs:
+    - paths:
+        - /var/log/neutron/neutron-server.log
+      fields:
+        type: openstack
+        tags: neutron,neutron-server
+    - paths:
+        - /var/log/neutron/neutron-dhcp-agent.log
+      fields:
+        type: openstack
+        tags: neutron,neutron-dhcp-agent
+    - paths:
+        - /var/log/neutron/neutron-l3-agent.log
+      fields:
+        type: openstack
+        tags: neutron,neutron-l3-agent
+    - paths:
+        - /var/log/neutron/neutron-metadata-agent.log
+      fields:
+        type: openstack
+        tags: neutron,neutron-metadata-agent
+    - paths:
+        - /var/log/neutron/neutron-lbaasv2-agent.log
+      fields:
+        type: openstack
+        tags: neutron,neutron-lbaasv2-agent
+    - paths:
+        - /var/log/neutron/neutron-linuxbridge-agent.log
+      fields:
+        type: openstack
+        tags: neutron,neutron-linuxbridge-agent
+  logging:
+    debug: False
+    verbose: True
+  cafile: "{{ ssl.cafile }}"
+  enable_external_interface: False
+  monitoring:
+    sensu_checks:
+      check_arping:
+        criticality: 'critical'
+      check_l3_router:
+        criticality: 'critical'
+  auditing:
+    enabled: False
+    logging: False
+  ml2_customization: False

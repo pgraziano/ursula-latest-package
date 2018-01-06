@@ -1,0 +1,54 @@
+---
+- name: register flavor count
+  shell: . /root/stackrc; openstack flavor list -f value --all
+  register: flavorcount
+  run_once: true
+  
+- name: Add flavors
+  environment:
+    PYTHONPATH: "{{ basevenv_lib_dir|default(omit) }}"
+  os_nova_flavor:
+    name: '{{ item.name }}'
+    ram: '{{ item.ram | int }}'
+    disk: '{{ item.disk | int }}'
+    vcpus: '{{ item.vcpus | int }}'
+    flavorid: '{{ item.flavorid | default(omit) }}'
+    rxtx_factor: '{{ item.rxtx_factor | default(omit) }}'
+    ephemeral: '{{ item.ephemeral | default(omit) }}'
+    is_public: '{{ item.is_public | default(omit) }}'
+    swap: '{{ item.swap | default(omit) }}'
+    validate_certs: "{{ validate_certs|default(omit) }}"
+    state: present
+    auth:
+      auth_url: "{{ endpoints.auth_uri  }}"
+      project_name: admin
+      username: admin
+      password: "{{ secrets.admin_password  }}"
+  with_items: '{{ openstack_meta.nova.flavors | default([]) }}'
+  run_once: true
+  when: 
+    - flavorcount.stdout == "" or openstack_meta.nova.force_flavors|bool
+    - not ironic.enabled|bool
+
+- name: Add ironic flavors
+  environment:
+    PYTHONPATH: "{{ basevenv_lib_dir|default(omit) }}"
+  os_nova_flavor:
+    name: '{{ item.name }}'
+    ram: '{{ item.ram | int }}'
+    disk: '{{ item.disk | int }}'
+    vcpus: '{{ item.vcpus | int }}'
+    flavorid: '{{ item.flavorid | default(omit) }}'
+    rxtx_factor: '{{ item.rxtx_factor | default(omit) }}'
+    ephemeral: '{{ item.ephemeral | default(omit) }}'
+    is_public: '{{ item.is_public | default(omit) }}'
+    swap: '{{ item.swap | default(omit) }}'
+    state: present
+    validate_certs: "{{ validate_certs|default(omit) }}"
+    auth:
+      auth_url: "{{ endpoints.auth_uri  }}"
+      project_name: admin
+      username: admin
+      password: "{{ secrets.admin_password  }}"
+  with_items: '{{ ironic.flavors | default([]) }}'
+  when: ironic.enabled | default(False) | bool

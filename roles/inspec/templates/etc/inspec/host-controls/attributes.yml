@@ -1,0 +1,14 @@
+{% for profile_name,profile in inspec.controls.iteritems() %}
+{% if profile.enabled|default('False')|bool and profile.attributes is defined %}
+{% for name,value in profile.attributes.iteritems() %}
+{% if value is iterable and value is not string %}
+{{ name }}:
+{% for list_item in value %}
+  - {{ list_item }}
+{% endfor %}
+{% else %}
+{{ name }}: {{ value }}
+{% endif %}
+{% endfor %}
+{% endif %}
+{% endfor %}

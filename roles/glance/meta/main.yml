@@ -1,0 +1,45 @@
+---
+dependencies:
+  - role: inspec
+    install_inspec_controls: [glance]
+    tags: inspec
+    when:
+      - inspec.enabled|bool
+      - inspec.controls.glance.enabled|bool
+  - role: openstack-meta
+  - role: endpoints
+  - role: monitoring-common
+    when: monitoring.enabled|default(True)|bool
+  - role: logging-config
+    when: logging.enabled|default(True)|bool
+    service: glance
+    logdata: "{{ glance.logs }}"
+  - role: openstack-source
+    project_name: glance
+    project_rev: "{{ glance.source.rev }}"
+    alternatives: "{{ glance.alternatives }}"
+    system_dependencies: "{{ glance.source.system_dependencies }}"
+    python_dependencies: "{{ glance.source.python_dependencies }}"
+    python_post_dependencies: "{{ glance.source.python_post_dependencies }}"
+    upper_constraints: "{{ glance.source.upper_constraints }}"
+    when: openstack_install_method == 'source'
+  - role: openstack-package
+    project_name: glance
+    alternatives: "{{ glance.alternatives }}"
+    when: openstack_install_method == 'package'
+  - role: collectd-plugin
+    when: collectd is defined and collectd.enabled|bool
+  - role: ceph-defaults
+    when: ceph.enabled
+  - role: openstack-database
+    database_name: glance
+  - role: openstack-distro
+    project_name: glance
+    project_packages: "{{ glance.distro.project_packages }}"
+    python_post_dependencies: "{{ glance.distro.python_post_dependencies }}"
+    when: openstack_install_method == 'distro'
+  - role: openstack-firewall
+    rule_name: glance
+    rules_type_input:
+      - { protocol: tcp, port: "{{ endpoints.glance.port.haproxy_api }}" }
+      - { protocol: tcp, port: "{{ endpoints.glance.port.backend_api }}" }

@@ -1,0 +1,50 @@
+---
+- name: determine Neutron external interface name
+  environment:
+    PYTHONPATH: "{{ basevenv_lib_dir|default(omit) }}"
+  os_network:
+    name: external
+    auth:
+      auth_url: "{{ endpoints.keystone.url.internal }}/{{ endpoints.keystone.version }}/"
+      project_name: admin
+      username: admin
+      password: "{{ secrets.admin_password }}"
+  register: result
+  run_once: true
+  failed_when: False
+
+- block:
+  - name: set neutron interface fact
+    set_fact: neutron_external_interface=brq{{ result.id|truncate(length=11,killwords=true,end='') }}
+
+  - name: check for existing external interface config (which may contain additional routes)
+    stat: path=/etc/network/interfaces.d/{{ neutron_external_interface }}.cfg
+    register: neutron_external_ifcfg
+
+  - name: neutron external interface config
+    template: src=ubuntu_neutron_external_interface.cfg
+              dest=/etc/network/interfaces.d/{{ neutron_external_interface }}.cfg
+              owner=root group=root mode=0644
+    when: not neutron_external_ifcfg.stat.exists
+    notify: ifup neutron external interface
+  when: ursula_os == 'ubuntu' and result.id is defined
+
+- block:
+  - name: set neutron interface fact
+    set_fact: neutron_external_interface=brq{{ result.id|truncate(length=11,killwords=true,end='') }}
+
+  - name: check for existing external interface config (which may contain additional routes)
+    stat: path=/etc/sysconfig/network-scripts/ifcfg-{{ neutron_external_interface }}
+    register: neutron_external_ifcfg
+
+  - name: neutron external interface config
+    template: src=rhel_neutron_external_interface.cfg
+              dest=/etc/sysconfig/network-scripts/ifcfg-{{ neutron_external_interface }}
+              owner=root group=root mode=0644
+    when: not neutron_external_ifcfg.stat.exists
+    notify:
+      - ifup neutron external interface
+      - enable ip forwarding
+      - enable ipv4 masquerade
+      - persist enable ipv4 masquerade
+  when: ursula_os == 'rhel' and result.id is defined

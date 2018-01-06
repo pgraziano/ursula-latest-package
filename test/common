@@ -1,0 +1,104 @@
+set -e
+set -x
+export STACK_RC=${STACK_RC:-~/.stackrc}
+# Do not print credentials to log
+set +x
+[[ -f ${STACK_RC} ]] && source ${STACK_RC}
+set -x
+
+if [ $JOB_NAME ]; then
+    JOB_SHORT_NAME=$(echo ${JOB_NAME//_/ } | awk '{for(i=1;i<=NF;i++) printf substr($i,0,1)}')
+    JOB_SHORT_NAME=${JOB_SHORT_NAME//UT/}
+fi
+export BUILD_ID=${BUILD_ID:=0}
+export JOB_SHORT_NAME=${JOB_SHORT_NAME:=local}
+if [[ -n ${ghprbPullId} ]]; then
+  export testenv_instance_prefix="CI-${JOB_SHORT_NAME}-${BUILD_ID}-pr${ghprbPullId}"
+elif [[ $(git rev-parse --abbrev-ref HEAD) == 'HEAD' ]]; then
+  export testenv_instance_prefix="CI-${JOB_SHORT_NAME}-${BUILD_ID}-$(git rev-parse --short HEAD)"
+else
+  export testenv_instance_prefix="CI-${JOB_SHORT_NAME}-${BUILD_ID}-$(git rev-parse --abbrev-ref HEAD)"
+fi
+testenv_instance_prefix=${testenv_instance_prefix//./}
+
+export ROOT="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )/.."
+export ENV_DIR=${ROOT}/envs/example/test
+export IMAGE_ID=${IMAGE_ID:=ubuntu-14.04}
+export AVAILABILITY_ZONE=${OS_AVAILABILITY_ZONE:=nova}
+export TEST_ENV=${TEST_ENV:=ci-full-ubuntu}
+export RUN_CLEANUP=${RUN_CLEANUP:=true}
+export LOGIN_USER=${LOGIN_USER:=ubuntu}
+export testenv_flavor=${testenv_flavor:=m1.large}
+export testenv_network=${testenv_network:=internal}
+export testenv_floating_ip_pool=${testenv_floating_ip_pool:=external}
+export testenv_heat_template_file=${ENV_DIR}/heat_stack.yml
+export testenv_heat_stack_name="${testenv_instance_prefix}_stack"
+export SECURITYGROUP_NAME="${testenv_instance_prefix}_ursula"
+export CONTROLLER_0_NAME="${testenv_instance_prefix}-controller-0"
+export CONTROLLER_1_NAME="${testenv_instance_prefix}-controller-1"
+export COMPUTE_0_NAME="${testenv_instance_prefix}-compute-0"
+export CEPH_0_NAME="${testenv_instance_prefix}-ceph-0"
+export CEPH_1_NAME="${testenv_instance_prefix}-ceph-1"
+export CEPH_2_NAME="${testenv_instance_prefix}-ceph-2"
+export SWIFT_0_NAME="${testenv_instance_prefix}-swift-0"
+export SWIFT_1_NAME="${testenv_instance_prefix}-swift-1"
+export SWIFT_2_NAME="${testenv_instance_prefix}-swift-2"
+export CPM_0_NAME="${testenv_instance_prefix}-cpm-0"
+export CPM_1_NAME="${testenv_instance_prefix}-cpm-1"
+export CPM_2_NAME="${testenv_instance_prefix}-cpm-2"
+export KEY_NAME="${testenv_instance_prefix}_key"
+
+export KEY_PATH=${ENV_DIR}/.ssh_key
+SSH_ARGS=\
+" ${ANSIBLE_SSH_ARGS}"\
+' -o LogLevel=quiet'\
+' -o StrictHostKeyChecking=no'\
+' -o UserKnownHostsFile=/dev/null'\
+" -i ${KEY_PATH}"
+export ANSIBLE_SSH_ARGS="${SSH_ARGS}"
+
+VMS="${CONTROLLER_0_NAME} ${CONTROLLER_1_NAME} ${COMPUTE_0_NAME}"
+if [[ $TEST_ENV == "ci-allinone" ]]; then
+  VMS="${testenv_instance_prefix}-allinone"
+elif [[ $TEST_ENV == "ci-ceph-swift-ubuntu" ]]; then
+  VMS=${VMS}" ${CEPH_0_NAME} ${CEPH_1_NAME} ${CEPH_2_NAME} ${SWIFT_0_NAME} ${SWIFT_1_NAME} ${SWIFT_2_NAME}"
+  export testenv_flavor_ceph_swift=${testenv_flavor_ceph_swift:=ci_ceph_swift}
+elif [[ $TEST_ENV == "ci-ceph-redhat" ]]; then
+  VMS=${VMS}" ${CEPH_0_NAME} ${CEPH_1_NAME} ${CEPH_2_NAME} ${CPM_0_NAME} ${CPM_1_NAME} ${CPM_2_NAME}"
+elif [[ $TEST_ENV == "ci-ceph-swift-rhel" ]]; then
+  VMS=${VMS}" ${CEPH_0_NAME} ${CEPH_1_NAME} ${CEPH_2_NAME} ${CPM_0_NAME} ${CPM_1_NAME} ${CPM_2_NAME} ${SWIFT_0_NAME} ${SWIFT_1_NAME} ${SWIFT_2_NAME}"
+  export testenv_flavor_ceph_swift=${testenv_flavor_ceph_swift:=ci_ceph_swift}
+fi
+
+if [[ $TEST_ENV == "ci-full-centos" || $TEST_ENV == "ci-full-rhel"|| $TEST_ENV == "ci-full-ubuntu" || $TEST_ENV == "ci-ceph-redhat" || $TEST_ENV == "ci-ceph-swift-rhel" || $TEST_ENV == "ci-ceph-swift-ubuntu" ]]; then
+    EXTRA_HEAT_PARAMS=image=${IMAGE_ID}";key_name=${KEY_NAME};security_group=${SECURITYGROUP_NAME};az=${AVAILABILITY_ZONE};controller-0_name=${CONTROLLER_0_NAME};controller-1_name=${CONTROLLER_1_NAME};compute-0_name=${COMPUTE_0_NAME}"
+    if [[ $TEST_ENV == "ci-ceph-swift-ubuntu" ]]; then
+        EXTRA_HEAT_PARAMS=${EXTRA_HEAT_PARAMS}";ceph-0_name=${CEPH_0_NAME};ceph-1_name=${CEPH_1_NAME};ceph-2_name=${CEPH_2_NAME};swift-0_name=${SWIFT_0_NAME};swift-1_name=${SWIFT_1_NAME};swift-2_name=${SWIFT_2_NAME}"
+    elif [[ $TEST_ENV == "ci-ceph-redhat" ]]; then
+        EXTRA_HEAT_PARAMS=${EXTRA_HEAT_PARAMS}";ceph-0_name=${CEPH_0_NAME};ceph-1_name=${CEPH_1_NAME};ceph-2_name=${CEPH_2_NAME};cpm-0_name=${CPM_0_NAME};cpm-1_name=${CPM_1_NAME};cpm-2_name=${CPM_2_NAME}"
+    elif [[ $TEST_ENV == "ci-ceph-swift-rhel" ]]; then
+        EXTRA_HEAT_PARAMS=${EXTRA_HEAT_PARAMS}";ceph-0_name=${CEPH_0_NAME};ceph-1_name=${CEPH_1_NAME};ceph-2_name=${CEPH_2_NAME};cpm-0_name=${CPM_0_NAME};cpm-1_name=${CPM_1_NAME};cpm-2_name=${CPM_2_NAME};swift-0_name=${SWIFT_0_NAME};swift-1_name=${SWIFT_1_NAME};swift-2_name=${SWIFT_2_NAME}" 
+    fi
+else
+    EXTRA_HEAT_PARAMS="image=${IMAGE_ID}"
+fi
+
+die() {
+  echo "[ERROR] $*"; exit 1
+}
+
+# Given a vm name, return its public ip
+public_ip() {
+  nova list | grep "$1" | awk '{print $13}'
+}
+
+private_ip() {
+  nova list | grep "$1" | awk '{print $12}' | awk -F= '{print $2}' | awk -F, '{print $1}'
+}
+
+ring_bell() {
+  if [[ -z $CI ]]; then
+    echo -en "\a" > /dev/tty
+  fi
+  return 0
+}

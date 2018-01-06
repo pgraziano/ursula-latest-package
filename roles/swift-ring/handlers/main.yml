@@ -1,0 +1,14 @@
+---
+- name: setup swift rings osp - bootstrap
+  command: /bin/swifttool -u swiftops -i /home/swiftops/.ssh/id_rsa
+           --config {{ swift_ring.outdir }}/ring_definition.yml --outdir {{ swift_ring.outdir }} bootstrap
+  become: True
+  become_user: swiftops
+  when: openstack_distro_type == 'osp'
+
+- name: setup swift rings - bootstrap
+  command: /usr/local/bin/swifttool -u swiftops -i /home/swiftops/.ssh/id_rsa
+           --config {{ swift_ring.outdir }}/ring_definition.yml --outdir {{ swift_ring.outdir }} bootstrap
+  become: True
+  become_user: swiftops
+  when: openstack_distro_type != 'osp'

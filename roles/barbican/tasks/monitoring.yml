@@ -1,0 +1,10 @@
+---
+- name: barbican process check installation
+  sensu_process_check: service=barbican
+  notify: restart sensu-client
+  
+- name: barbican-api check
+  sensu_check: name=check-barbican-api plugin=check-os-api.rb
+               args="--service barbican --criticality {{ barbican.monitoring.sensu_checks.check_barbican_api.criticality }}"
+               only_on_ip="{{ undercloud_floating_ip | default(floating_ip) }}"
+  notify: restart sensu-client

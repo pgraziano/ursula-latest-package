@@ -1,0 +1,147 @@
+---
+- name: install dependencies
+  package: name={{ item }} state=present
+  with_items: "{{ ceph.depend_pkgs }}"
+  register: result
+  until: result|succeeded
+  retries: 5
+
+- name: install ceph monitor
+  package: name=ceph-mon{{ ceph.pkg_version_connector[ursula_os] }}{{ ceph.version[ursula_os] }}
+           state=present
+  register: result
+  until: result|succeeded
+  retries: 5
+
+# FIXME: let's rename keyring.mon.{{ ansible_hostname }} in next relese.
+# Variable 'ansible_hostname' is not needed as part of the file name,
+# ceph.mon.keyring will be a good name
+- name: create monitor initial keyring
+  command: ceph-authtool /var/lib/ceph/tmp/keyring.mon.{{ ansible_hostname }}
+           --create-keyring --name=mon. --gen-key --cap mon 'allow *'
+           creates=/var/lib/ceph/tmp/keyring.mon.{{ ansible_hostname }}
+  run_once: true
+  delegate_to: "{{ groups['ceph_monitors'][0] }}"
+
+- name: fetch contents of mon_secret file
+  slurp: path=/var/lib/ceph/tmp/keyring.mon.{{ ansible_hostname }}
+  run_once: true
+  delegate_to: "{{ groups['ceph_monitors'][0] }}"
+  register: mon_secret_file
+
+- name: copy mon_secret to all hosts
+  copy:
+    dest: /var/lib/ceph/tmp/keyring.mon.{{ ansible_hostname }}
+    content: "{{ mon_secret_file['content'] | b64decode }}"
+
+- name: set initial monitor key permissions
+  file: path=/var/lib/ceph/tmp/keyring.mon.{{ ansible_hostname }}
+        mode=0600
+        owner=ceph
+        group=ceph
+
+- name: create monitor directory
+  file: path=/var/lib/ceph/mon/ceph-{{ ansible_hostname }}
+        state=directory
+        owner=ceph
+        group=ceph
+        mode=0755
+
+- name: ceph monitor mkfs
+  command: ceph-mon --setuser ceph --setgroup ceph --mkfs -i {{ ansible_hostname }}
+           --fsid {{ fsid_file.content | b64decode }}
+           --keyring /var/lib/ceph/tmp/keyring.mon.{{ ansible_hostname }}
+           creates=/var/lib/ceph/mon/ceph-{{ ansible_hostname }}/keyring
+
+- name: make sure ceph.log/audit.log has proper permissions for logstash
+  file: dest=/var/log/ceph/{{ item }}
+        state=touch
+        owner=ceph
+        group=ceph
+        mode=0644
+  with_items:
+    - ceph.log
+    - ceph.audit.log
+
+- name: make sure /var/log/ceph has rx permissions for other user
+  file: path=/var/log/ceph
+        state=directory
+        owner=ceph
+        group=ceph
+        mode="o+rx"
+
+- name: activate monitor with upstart
+  file: path=/var/lib/ceph/mon/ceph-{{ ansible_hostname }}/{{ item }}
+        state=touch
+        owner=ceph
+        group=ceph
+        mode=0600
+  with_items:
+    - done
+    - upstart
+  when: ursula_os == 'ubuntu'
+
+- name: ensure ceph-mon service enabled and started(debian)
+  service: name=ceph-mon
+           state=started
+           enabled=yes
+           args=id={{ ansible_hostname }}
+  when: ursula_os == 'ubuntu'
+
+- name: ensure ceph-mon service enabled and started(redhat)
+  service: name=ceph-mon@{{ ansible_hostname }}
+           state=started
+           enabled=yes
+  when: ursula_os == 'rhel'
+
+- name: wait for client.admin key exists
+  wait_for: path=/etc/ceph/ceph.client.admin.keyring
+
+- name: create openstack keys
+  command: ceph auth get-or-create {{ item.name }} {{ item.value }}
+           -o /etc/ceph/ceph.{{ item.name }}.keyring
+           creates=/etc/ceph/ceph.{{ item.name }}.keyring
+  with_items: "{{ ceph.openstack_keys }}"
+
+# ceph auth get-or-create is not able to change caps of an existing user
+# we change the caps here
+- name: update openstack ceph user caps
+  command: ceph auth caps {{ item.name }} {{ item.value }}
+  run_once: true
+  with_items: "{{ ceph.openstack_keys }}"
+
+- include: restart_flags.yml
+
+# setup ceph-utils
+- block:
+  - name: create config directory for ceph_utils
+    file: path=/etc/bbg-ceph-utils state=directory
+
+  - name: setup config file for ceph_utils
+    template: src=etc/bbg-ceph-utils/ceph-utils.conf
+              dest=/etc/bbg-ceph-utils/ceph-utils.conf
+
+  - name: install ceph_utils module
+    pip: name={{ ceph.bbg_ceph_utils_pkg.name }}
+         version={{ ceph.bbg_ceph_utils_pkg.version|default(omit) }}
+         virtualenv={{ basevenv|default(omit)  }}
+         extra_args={{ ceph.bbg_ceph_utils_pkg.pip_extra_args|default(omit) }}
+    no_log: true
+    register: result
+    until: result|succeeded
+    retries: 5
+
+# disable ceph-utils cron job, as this is not good for old env which
+# upgraded from 3.0 or less
+#  - name: add cron to adjust ceph pg number
+#    cron: name='ceph-utils' minute='*/{{ ceph.adjust_inveral }}'
+#          job='{{ basevenv+"/bin/" if basevenv else "" }}ceph-utils adjust-all'
+#          cron_file='ceph_utils' user=root
+
+  when: ceph.bbg_ceph_utils_pkg
+
+- include: monitoring.yml
+  tags:
+    - monitoring
+    - common
+  when: monitoring.enabled|default(true)

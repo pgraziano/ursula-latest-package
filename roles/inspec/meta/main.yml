@@ -1,0 +1,10 @@
+---
+dependencies:
+  - role: apt-repos
+    repos:
+      - repo: 'deb {{ apt_repos.chef.repo }} trusty main'
+        key_url: '{{ apt_repos.chef.key_url }}'
+    when: ursula_os == 'ubuntu'
+  - role: repos
+    repo: chef
+    when: ursula_os == 'rhel'

@@ -1,0 +1,24 @@
+# {{ ansible_managed }}
+---
+output:
+  logstash:
+    hosts:
+      - "{{ logging.forward.host }}:{{ logging.forward.port }}"
+{% if logging.forward.tls.enabled|bool and logging.forward.tls.ca_cert %}
+    ssl:
+      certificate_authorities:
+        - "/usr/local/share/ca-certificates/logging-forward.crt"
+{% endif %}
+
+filebeat:
+  config_dir: "{{ logging.forward.config_dir }}"
+{% if logging.follow.logs | length > 0 %}
+  prospectors:
+{% for log in logging.follow.logs %}
+    - fields_under_root: true
+      paths: {{ log.paths | to_yaml }}
+{%- if log.fields is defined %}{% set _dummy = log.fields.update(logging.follow.global_fields) %}{% endif %}
+      fields: {{ log.fields | default(logging.follow.global_fields) | to_yaml  }}
+{% endfor %}
+{% endif %}
+

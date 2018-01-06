@@ -1,0 +1,39 @@
+---
+# Check (remaining) instances connectivity
+- name: floating ips are reachable
+  command: "ping -c 5 {{ item.floating_ip.floating_ip_address }}"
+  with_items: "{{ fip_instances.results }}"
+  register: pings
+  until: pings|success
+  delay: 1
+  retries: 5
+  become: no
+  delegate_to: localhost
+
+- name: instance internet connectivity test w/ floating-ip (ping)
+  command: "ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no
+           -o IdentityFile={{ temp_key_dest }}
+           cirros@{{ item.floating_ip.floating_ip_address }}
+           ping -c 5 google.com"
+  with_items: "{{ fip_instances.results }}"
+  register: pings
+  until: pings|success
+  delay: 1
+  retries: 5
+  changed_when: false
+  become: no
+  delegate_to: localhost
+
+- name: instance internet connectivity w/ floating ip (curl)
+  command: "ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no
+           -o IdentityFile={{ temp_key_dest }}
+           cirros@{{ item.floating_ip.floating_ip_address }}
+           curl -IL --fail --connect-timeout 10 http://google.com"
+  with_items: "{{ fip_instances.results }}"
+  register: curl
+  until: curl|success
+  delay: 1
+  retries: 5
+  changed_when: false
+  become: no
+  delegate_to: localhost

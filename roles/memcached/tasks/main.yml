@@ -1,0 +1,59 @@
+---
+- name: install memcached packages
+  package: name=memcached
+  register: result
+  until: result|succeeded
+  retries: 5
+
+- name: install memcached packages
+  package:
+    name=libsasl2-dev
+  when: ursula_os == 'ubuntu'
+  register: result
+  until: result|succeeded
+  retries: 5
+
+- name: install memcached packages
+  package:
+    name=cyrus-sasl-devel
+  when: ursula_os == 'rhel'
+  register: result
+  until: result|succeeded
+  retries: 5
+
+
+- name: install memcached packages
+  package:
+    name=python-memcache
+  when: ursula_os == 'ubuntu'
+  register: result
+  until: result|succeeded
+  retries: 5
+
+- name: install memcached packages
+  package:
+    name=python-memcached
+  when: ursula_os == 'rhel'
+  register: result
+  until: result|succeeded
+  retries: 5
+
+- name: "remove /nonexistent inadvertently created by memcached package: see https://bugs.launchpad.net/ubuntu/+source/memcached/+bug/1255328/"
+  file: dest=/nonexistent state=absent
+
+- name: memcached configuration
+  template: src=memcached.conf dest=/etc/memcached.conf mode=0644
+  notify:
+    - restart memcached
+  when: openstack_install_method != 'distro'
+
+- name: memcached configuration (rhel osp)
+  template: src=etc/sysconfig/memcached dest=/etc/sysconfig/memcached mode=0644
+  notify:
+    - restart memcached
+  when: openstack_install_method == 'distro'
+
+- include: monitoring.yml
+  tags:
+    - monitoring
+  when: monitoring.enabled|default('True')|bool

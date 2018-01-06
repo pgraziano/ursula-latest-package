@@ -1,0 +1,62 @@
+---
+#  create ssd root bucket
+- name: Create root ssd-bucket root
+  shell: ceph osd crush add-bucket {{ ssd_pool }} root
+  register: result
+  changed_when: result.stdout |search("added bucket")
+  when: inventory_hostname == (play_hosts | intersect(groups['ceph_osds_ssd']))[0]
+
+# Create crush ruleset for the ssd root bucket
+- name: Create crush ruleset ssd root bucket
+  shell: ceph osd crush rule create-simple {{ ssd_ruleset }} {{ ssd_pool }} host firstn
+  register: result
+  changed_when: not result.stdout |search("already exists")
+  delegate_to: "{{ groups['ceph_monitors'][0] }}"
+  when: inventory_hostname == (play_hosts | intersect(groups['ceph_osds_ssd']))[0]
+
+# Create osd host bucket
+- name: Create osd host bucket
+  shell: ceph osd crush add-bucket {{ ansible_hostname }} host
+  register: result
+  changed_when: result.stdout |search("added bucket")
+
+# Move the host bucket under corresponding root
+- name: Move host bucket under root bucket
+  shell: ceph osd crush move {{ ansible_hostname }} root={{ ssd_pool }}
+  register: result
+  changed_when: result.stdout |search("moved item")
+
+# we check for a ceph partition to avoid destructive tasks below
+- name: check if 'ceph' partition exists on osd disks
+  shell: "parted --script /dev/{{ item }} print | egrep -sq 'ceph'"
+  with_items: "{{ ceph.disks }}"
+  failed_when: false
+  changed_when: false
+  register: ceph_partitions
+
+- name: activate new osds(full ssd)
+  include: activate_fullssd.yml
+  delegate_to: "{{ outer_item }}"
+  with_items: "{{ groups['ceph_osds_ssd']|default([])|intersect(play_hosts) }}"
+  loop_control:
+    loop_var: outer_item
+  when: inventory_hostname == (play_hosts | intersect(groups['ceph_osds_ssd']))[0]
+
+# pool pg number is based on osd amount
+# we should create pool when all osds are up
+- name: create openstack pool
+  ceph_pool:
+    pool_name: "{{ ssd_pool }}"
+    osds: "{{ groups['ceph_osds_ssd']|length * ceph.disks|length }}"
+    target_pgs_per_osd: "{{ ceph.target_pgs_per_osd }}"
+    max_pgs_per_osd: "{{ ceph.max_pgs_per_osd }}"
+    pool_size: "{{ ceph.pool_default_size }}"
+  delegate_to: "{{ groups['ceph_monitors'][0] }}"
+  when: inventory_hostname == (play_hosts | intersect(groups['ceph_osds_ssd']))[0]
+
+# not sure is there a better way to get ruleset id
+- name: set ruleset for pool
+  shell: ceph osd pool set {{ ssd_pool }} crush_ruleset
+         $(ceph osd crush rule dump |grep {{ ssd_ruleset }} -A1 |grep -oP '\d+')
+  delegate_to: "{{ groups['ceph_monitors'][0] }}"
+  when: inventory_hostname == (play_hosts | intersect(groups['ceph_osds_ssd']))[0]

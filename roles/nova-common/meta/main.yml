@@ -1,0 +1,48 @@
+---
+dependencies:
+  # import ceph-defaults if any, we need ceph.client_version even ceph is not enabled
+  - role: ceph-defaults
+  - role: openstack-meta
+  - role: endpoints
+  - role: apt-repos
+    repos:
+      - repo: 'deb {{ apt_repos.cloud_archive.repo }} {{ ansible_distribution_release }}-updates/mitaka main'
+        key_package: ubuntu-cloud-keyring
+    when: ursula_os == 'ubuntu'
+  - role: sensu-check
+  - role: monitoring-common
+    when: monitoring.enabled|default(True)|bool
+  - role: logging-config
+    when: logging.enabled|default(True)|bool
+    service: nova
+    logdata: "{{ nova.logs }}"
+  - role: openstack-source
+    project_name: nova
+    project_rev: "{{ nova.source.rev }}"
+    rootwrap: True
+    alternatives: "{{ nova.alternatives }}"
+    system_dependencies: "{{ nova.source.system_dependencies }}"
+    python_dependencies: "{{ nova.source.python_dependencies }}"
+    upper_constraints: "{{ nova.source.upper_constraints }}"
+    when: openstack_install_method == 'source'
+  - role: openstack-package
+    project_name: nova
+    rootwrap: True
+    alternatives: "{{ nova.alternatives }}"
+    when: openstack_install_method == 'package'
+  - role: openstack-distro
+    project_name: nova
+    project_packages: "{{ nova.distro.controller.project_packages }}"
+    python_post_dependencies: "{{ nova.distro.python_post_dependencies }}"
+    rootwrap: True
+    when:
+      - openstack_install_method == 'distro'
+      - inventory_hostname in groups['controller']
+  - role: openstack-distro
+    project_name: nova
+    project_packages: "{{ nova.distro.compute.project_packages }}"
+    rootwrap: True
+    when:
+      - openstack_install_method == 'distro'
+      - inventory_hostname in groups['compute']
+  - role: v7k-defaults

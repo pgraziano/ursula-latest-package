@@ -1,0 +1,11 @@
+---
+rhn_subscription:
+  pool_names_regex: "^Red Hat Satellite - Add-Ons for Providers"
+  repos:
+    enable:
+      - rhel-7-server-rpms
+      - rhel-7-server-rh-common-rpms
+      - rhel-7-server-extras-rpms
+      - rhel-7-server-optional-rpms
+      - rhel-7-server-rhceph-2-tools-rpms
+      - rhel-7-server-rhceph-2-osd-rpms

@@ -1,0 +1,17 @@
+---
+- name: haproxy check process
+  sensu_check: name=haproxy_process plugin=check-procs.rb
+               args="-p 'haproxy.*-f /etc/haproxy/haproxy.cfg' -w 5 -c 10 -W 1 -C 1"
+  notify: restart sensu-client
+
+- name: haproxy check backends
+  sensu_check: name=haproxy_servers plugin=check-haproxy.rb
+               args="-c 100 -S /var/run/haproxy/stats.sock -A"
+               use_sudo=true
+  notify: restart sensu-client
+
+- name: haproxy metrics
+  template: src=etc/collectd/plugins/haproxy.conf dest=/etc/collectd/plugins/haproxy.conf
+  notify: restart collectd
+  when: collectd is defined and collectd.enabled|bool
+  tags: collectd

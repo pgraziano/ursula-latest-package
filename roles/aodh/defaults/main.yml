@@ -1,0 +1,66 @@
+---
+project_name: aodh
+aodh:
+  debug: False
+  services:
+    aodh_api: "{{ openstack_meta.aodh.services.aodh_api[ursula_os] }}"
+    aodh_evaluator: "{{ openstack_meta.aodh.services.aodh_evaluator[ursula_os] }}"
+    aodh_listener: "{{ openstack_meta.aodh.services.aodh_listener[ursula_os] }}"
+    aodh_notifier: "{{ openstack_meta.aodh.services.aodh_notifier[ursula_os] }}"
+    aodh_expirer: "{{ openstack_meta.aodh.services.aodh_expirer[ursula_os] }}"
+  distro:
+    project_packages:
+      - openstack-aodh-api
+      - openstack-aodh-evaluator
+      - openstack-aodh-listener
+      - openstack-aodh-notifier
+      - openstack-aodh-expirer
+  source:
+    rev: newton-eol
+    upper_constraints: '{{ openstack_meta.upper_constraints }}'
+    python_dependencies:
+      - { name: PyMySQL }
+      - { name: python-memcached }
+      - { name: python-ceilometerclient }
+    system_dependencies:
+      ubuntu: []
+      rhel: []
+  alternatives:
+    - aodh-evaluator
+    - aodh-notifier
+    - aodh-listener
+    - aodh-expirer
+    - aodh-api
+    - aodh-dbsync
+  logs:
+    - paths:
+      - /var/log/aodh/aodh-api.log
+      fields:
+        type: openstack
+        tags: aodh,aodh-api
+    - paths:
+      - /var/log/aodh/aodh-listener.log
+      fields:
+        type: openstack
+        tags: aodh,aodh-listener
+    - paths:
+      - /var/log/aodh/aodh-notifier.log
+      fields:
+        type: openstack
+        tags: aodh,aodh-notifier
+    - paths:
+      - /var/log/aodh/aodh-expirer.log
+      fields:
+        type: openstack
+        tags: aodh,aodh-expirer
+    - paths:
+      - /var/log/aodh/aodh-evaluator.log
+      fields:
+        type: openstack
+        tags: aodh,aodh-evaluator
+  cafile: "{{ ssl.cafile }}"
+  alarm_history_time_to_live: 864000
+  monitoring:
+    sensu_checks:
+      check_aodh_api:
+        criticality: critical

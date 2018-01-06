@@ -1,0 +1,22 @@
+---
+haproxy:
+  stats_group: monitor
+  global:
+    maxconn: 20480
+    bufsize: 16384
+  defaults:
+    timeout_http_request: 30s
+    timeout_http_keep_alive: 60s
+    timeout_queue: 1m
+    timeout_connect: 5s
+    timeout_client: 300s
+    timeout_server: 300s
+    timeout_check: 10s
+    check_interval: 2s
+    stats_refresh: 10s
+  mysql:
+    maxconn: 4096
+    timeout_connect: 5000ms
+    timeout_client: 300s
+    timeout_server: 300s
+    retries: 3

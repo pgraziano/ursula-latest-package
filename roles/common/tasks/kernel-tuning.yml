@@ -1,0 +1,75 @@
+---
+#
+# NOTE: this file is included by the prereboot tag, as such it should work not include anything that will break older releases
+#
+- name: Install prerequisites for acquiring crash dumps
+  package: name={{ item }}
+  with_items:
+    - linux-crashdump
+    - kdump-tools
+    - makedumpfile
+    - crash
+  register: result
+  until: result|succeeded
+  retries: 5
+
+- name: Set crash directory permissions to 0775
+  file: path=/var/crash state=directory mode=0775
+
+- name: Enable kdump
+  lineinfile: dest=/etc/default/kdump-tools
+              regexp="^USE_KDUMP="
+              line="USE_KDUMP=1"
+
+- name: tune the kernel
+  template: src=etc/sysctl.d/60-kernel-tuning.conf
+            dest=/etc/sysctl.d/60-kernel-tuning.conf owner=root group=root
+            mode=0644
+  notify:
+    - apply-sysctl
+
+- stat: path=/etc/default/grub
+  register: grub_defaults
+
+- name: "Kernel boot parameters: disable quiet boot"
+  lineinfile: dest=/etc/default/grub
+              regexp="^GRUB_CMDLINE_LINUX_DEFAULT="
+              line="GRUB_CMDLINE_LINUX_DEFAULT=\"\""
+  when: grub_defaults.stat.exists
+  notify: update grub config
+
+#
+#  consoleblank=0   Disable console blanking, prevent VGA console from going into power save mode
+#  crashkernel=256M Reserve memory for crash dump kernel
+#  nmi_watchdog=1   Enable NMI watchdog timer
+#  serial_console_cmdline   Enable kernel messages on ttyS0 and any IPMI SOL if present
+#  console=tty0     Enable default VGA console as /dev/console (must be last console)
+#                   See https://www.kernel.org/doc/Documentation/serial-console.txt
+#  biosdevname=0    Disable naming ethernet devices by bios names
+#
+- name: "Kernel boot parameters: disable console screen blanking, enabled serial console on IPMI serial over LAN, optional maxcpus"
+  lineinfile: dest=/etc/default/grub
+              regexp="^GRUB_CMDLINE_LINUX="
+              line="GRUB_CMDLINE_LINUX=\"consoleblank=0 nmi_watchdog=1 {{ serial_console_cmdline|default('') }} console=tty0 biosdevname=0 {{- ' maxcpus=%s' % cpulimit if cpulimit is defined else '' }} {{- ' smt-enabled=off' if ansible_architecture == 'ppc64le' else '' }} \""
+  when: grub_defaults.stat.exists
+  notify: update grub config
+
+# This was removed in later distributions, but is in grub-common and if present
+# will override our crashkernel configuration above
+- name: Increase grub-common crashkernel reserved size
+  lineinfile: dest=/etc/grub.d/10_linux
+              regexp="^    GRUB_CMDLINE_EXTRA=.+crashkernel="
+              line="    GRUB_CMDLINE_EXTRA=\"$GRUB_CMDLINE_EXTRA crashkernel=256M\""
+  notify: update grub config
+
+- name: "Disable GRUB OS prober so we don't try to boot instance's cinder volumes"
+  lineinfile: dest=/etc/default/grub
+              line="GRUB_DISABLE_OS_PROBER=true"
+  when: grub_defaults.stat.exists
+  notify: update grub config
+
+- name: Remove any forced boot kernel
+  lineinfile:
+    dest: /etc/default/grub
+    regexp: "^GRUB_DEFAULT=" #
+    state: absent

@@ -1,0 +1,20 @@
+- name: remove old log configs / files
+  file: dest={{ item }} state=absent
+  with_items:
+    - /etc/nova/logging.conf
+    - /etc/cinder/logging.conf
+    - /etc/keystone/logging.conf
+    - /var/log/keystone/error.log
+    - /var/log/keystone/access.log
+
+- name: remove rsyslog configs
+  file: dest=/etc/rsyslog.d/{{ item }} state=absent
+  with_items:
+    - follow.conf
+    - forward.conf
+    - udp.conf
+  notify: restart rsyslog
+
+- name: remove rsyslog forward cert auth
+  file: dest=/usr/local/share/ca-certificates/rsyslog-forward.crt state=absent
+  notify: refresh cert auths

@@ -1,0 +1,99 @@
+---
+- name: install required packages and diagnostic tools
+  package:
+    name: "{{ item }}"
+  with_items:
+    - bwm-ng
+    - ipset
+    - ebtables
+  register: result
+  until: result|succeeded
+  retries: 5
+
+- block:
+  - name: update iproute2 to latest ppa (ubuntu)
+    package: name=iproute2 state=latest
+    register: result
+    until: result|succeeded
+    retries: 5
+
+  - name: install neutron-linuxbridge-agent service (ubuntu)
+    upstart_service:
+      name: "{{ item.name }}"
+      user: "{{ item.user }}"
+      envs: "{{ item.envs }}"
+      cmd: "{{ item.cmd }}"
+      config_dirs: "{{ item.config_dirs }}"
+      config_files: "{{ item.config_files|default(omit) }}"
+    with_items:
+      - "{{ neutron.services.neutron_linuxbridge_agent }}"
+    when: neutron.plugin == 'ml2'
+  when: ursula_os == 'ubuntu'
+
+- name: install neutron-linuxbridge-agent service (rhel package)
+  systemd_service:
+    name: "{{ item.name }}"
+    description: "{{ item.desc }}"
+    type: "{{ item.type }}"
+    user: "{{ item.user }}"
+    environments: "{{ item.environments }}"
+    #FIXME added prestart to match up osp systemd
+    #prestart_script: "{{ item.prestart_script }}"
+    cmd: "{{ item.cmd }}"
+    config_dirs: "{{ item.config_dirs }}"
+    config_files: "{{ item.config_files }}"
+    restart: "{{ item.restart }}"
+    kill_mode: "{{ item.kill_mode }}"
+  with_items:
+    - "{{ neutron.services.neutron_linuxbridge_agent }}"
+  when:
+    - ursula_os == 'rhel'
+    - neutron.plugin == 'ml2'
+
+- name: mask unwanted neutron services on compute (rhel)
+  command: systemctl mask {{ item.name }}
+  with_items:
+    - "{{ neutron.services.neutron_server }}"
+    - "{{ neutron.services.neutron_dhcp_agent }}"
+    - "{{ neutron.services.neutron_l3_agent }}"
+    - "{{ neutron.services.neutron_metadata_agent }}"
+  when:
+    - ursula_os == 'rhel'
+    - not inventory_hostname in groups['network']
+
+- name: ml2 dataplane config
+  template: src=etc/neutron/plugins/ml2/ml2_plugin_dataplane.ini
+            dest=/etc/neutron/plugins/ml2/ml2_plugin_dataplane.ini
+            mode=0644
+  when: neutron.plugin == 'ml2'
+  notify:
+    - restart neutron services
+
+- name: trigger restart on upgrades
+  debug:
+    msg: "Triggering service restart for upgrade"
+  changed_when: True
+  notify: restart neutron services
+  when: code_has_changed | default('False') | bool and
+        upgrade | default('False') | bool
+
+- meta: flush_handlers
+
+- name: start neutron-linuxbridge-agent
+  service:
+    name: "{{ neutron.services.neutron_linuxbridge_agent.name }}"
+    state: started
+    enabled: True
+  when: neutron.plugin == 'ml2'
+
+- name: cleanup interface logs
+  template: src=etc/cron.daily/cleanup-neutron-interfaces
+            dest=/etc/cron.daily/cleanup-neutron-interfaces
+            mode=0755 owner=root
+  when: ursula_os == 'ubuntu'
+
+- include: monitoring.yml
+  tags:
+    - monitoring
+    - common
+  when: monitoring.enabled|default('True')|bool

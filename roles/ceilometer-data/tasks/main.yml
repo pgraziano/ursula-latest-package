@@ -1,0 +1,68 @@
+---
+- name: install ceilometer polling agent
+  upstart_service:
+    name: "{{ item.name }}"
+    user: "{{ item.user }}"
+    cmd: "{{ item.cmd }}"
+  with_items:
+    - "{{ ceilometer.services.ceilometer_polling }}"
+  notify: restart ceilometer data services
+  when: ursula_os == 'ubuntu'
+
+- name: install ceilometer polling agent (rhel)
+  systemd_service:
+    name: "{{ item.name }}"
+    description: "{{ item.desc }}"
+    type: "{{ item.type }}"
+    user: "{{ item.user }}"
+    cmd: "{{ item.cmd }}"
+    args: "{{ item.args|default(omit) }}"
+    restart: "{{ item.restart }}"
+  with_items:
+    - "{{ ceilometer.services.ceilometer_polling }}"
+    - "{{ ceilometer.services.ceilometer_polling_compute }}"
+  when: ursula_os == 'rhel'
+
+- name: install libvirt-python in package venv
+  command: "{{ 'ceilometer'|ursula_package_path(openstack_package_version) }}/bin/pip install libvirt-python"
+  notify: restart ceilometer data services
+  when: openstack_install_method == 'package'
+
+- name: install libvirt-python in source venv
+  command: "{{ openstack_source.virtualenv_base }}/ceilometer/bin/pip install libvirt-python"
+  notify: restart ceilometer data services
+  when: openstack_install_method == 'source'
+
+- name: add ceilometer user to libvirt group
+  user:
+    name: ceilometer
+    groups: "{{ ceilometer.libvirt_group[ursula_os] }}"
+    append: yes
+    createhome: no
+    home: /nonexistent
+  notify: restart ceilometer data services
+
+- name: trigger restart on upgrades
+  debug:
+    msg: "Triggering service restart for upgrade"
+  changed_when: True
+  notify: restart ceilometer data services
+  when: code_has_changed | default('False') | bool and
+        upgrade | default('False') | bool
+
+- meta: flush_handlers
+
+- name: start ceilometer-polling service
+  service:
+    name: "{{ item.name }}"
+    state: started
+    enabled: true
+  with_items:
+    - "{{ ceilometer.services.ceilometer_polling }}"
+    - "{{ ceilometer.services.ceilometer_polling_compute }}"
+
+- include: monitoring.yml
+  tags:
+    - monitoring
+    - common
+  when: monitoring.enabled|default('True')|bool

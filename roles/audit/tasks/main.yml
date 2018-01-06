@@ -1,0 +1,15 @@
+---
+- name: configure audisp syslog plugin
+  template:
+    src: etc/audisp/plugins.d/syslog.conf
+    dest: /etc/audisp/plugins.d
+    mode: 0640
+  notify: restart auditd
+
+
+- name: configure audit rules
+  template:
+    src: etc/audit/rules.d/audit_default.rules
+    dest: /etc/audit/rules.d
+    mode: 0640
+  notify: generate audit.rules

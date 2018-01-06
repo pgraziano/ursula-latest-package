@@ -1,0 +1,96 @@
+---
+  Authenticate.validate_cinder:
+    -
+      args:
+        repetitions: 2
+      runner:
+        type: "constant"
+        times: 6
+        concurrency: 2
+      context:
+        users:
+          tenants: 3
+          users_per_tenant: 5
+      sla:
+        failure_rate:
+          max: 1
+
+  CinderVolumes.create_and_delete_volume:
+    -
+      args:
+        size: 1
+      runner:
+        type: "constant"
+        times: 6
+        concurrency: 2
+      context:
+        users:
+          tenants: 3
+          users_per_tenant: 2
+        quotas:
+          cinder:
+            volumes: -1
+      sla:
+        failure_rate:
+          max: 1
+
+  CinderVolumes.create_from_volume_and_delete_volume:
+    -
+      args:
+        size: 1
+      runner:
+        type: "constant"
+        times: 6
+        concurrency: 2
+      context:
+        users:
+          tenants: 3
+          users_per_tenant: 2
+        volumes:
+          size: 1
+      sla:
+        failure_rate:
+          max: 1
+
+  CinderVolumes.create_and_delete_snapshot:
+    -
+      args:
+          force: false
+      runner:
+        type: "constant"
+        times: 6
+        concurrency: 2
+      context:
+        users:
+          tenants: 3
+          users_per_tenant: 2
+        volumes:
+          size: 1
+      sla:
+        failure_rate:
+          max: 1
+
+  NovaServers.boot_server_from_volume_and_delete:
+    -
+      args:
+        flavor:
+            name: "m1.tiny"
+        image:
+            name: {{image_name}}
+        volume_size: 10
+        force_delete: false
+        nics:
+          - { "net-id": "{{net_id}}" }
+      runner:
+        type: "constant"
+        times: 10
+        concurrency: 1
+      context:
+        users:
+          tenants: 3
+        quotas:
+          cinder:
+            volumes: -1
+      sla:
+        failure_rate:
+          max: 10

@@ -1,0 +1,38 @@
+---
+- name: install ironic controller services
+  upstart_service: name={{ item }}
+                   user=ironic
+                   cmd=/usr/local/bin/{{ item }}
+                   config_dirs=/etc/ironic
+  with_items:
+    - ironic-api
+
+- name: stop ironic services before db sync
+  service: name={{ item }} state=stopped
+  with_items:
+    - ironic-api
+  tags: db-migrate
+
+- name: sync ironic database
+  command: ironic-dbsync
+  when: database_create.changed or force_sync|default('false')|bool
+  changed_when: true
+  run_once: true
+  notify: restart ironic services
+  # we want this to always be changed so that it can notify the service restart
+  tags: db-migrate
+
+- name: trigger restart on upgrades
+  debug:
+    msg: "Triggering service restart for upgrade"
+  changed_when: True
+  notify: restart ironic services
+  when: code_has_changed | default('False') | bool and
+        upgrade | default('False') | bool
+
+- meta: flush_handlers
+
+- name: start ironic controller services
+  service: name={{ item }} state=started
+  with_items:
+    - ironic-api

@@ -1,0 +1,13 @@
+---
+v7k:
+  enabled: False
+  ssh_port: 22
+  multipath:
+    enabled: False
+    ubuntu:
+      package_name: multipath-tools
+      service_name: multipath-tools
+    rhel:
+      package_name: device-mapper-multipath
+      service_name: multipathd
+  

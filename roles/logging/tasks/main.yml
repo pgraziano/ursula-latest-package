@@ -1,0 +1,19 @@
+- include: logstash.yml
+  when: logging.forward_type != 'filebeat'
+
+- include: filebeat.yml
+  when: logging.forward_type  == 'filebeat'
+
+- name: configure remote syslog forwarding
+  template:
+      src: etc/rsyslog.d/60-remote-syslog.conf
+      dest: /etc/rsyslog.d
+      mode: 0640
+  notify: restart rsyslog
+  when: logging.syslog_forwarding.enabled
+
+- include: monitoring.yml
+  tags: 
+    - monitoring
+    - sensu-checks
+  when: monitoring.enabled|default('True')|bool

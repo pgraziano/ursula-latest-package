@@ -1,0 +1,130 @@
+---
+- name: create aodh user
+  user: name=aodh comment=aodh shell=/bin/false system=yes home=/nonexistent
+        createhome=no
+
+- name: create aodh directory
+  file: dest=/etc/aodh state=directory
+
+- name: create aodh log directory
+  file: dest=/var/log/aodh state=directory mode=0755 owner=aodh
+
+- name: create aodh cache dir
+  file: dest=/var/cache/aodh state=directory mode=0700
+        owner=aodh group=aodh
+
+- name: install aodh services
+  upstart_service:
+    name: "{{ item.name }}"
+    user: "{{ item.user }}"
+    cmd: "{{ item.cmd }}"
+    args: "{{ (item.name == 'aodh-api') | ternary('--port %s' % endpoints.aodh.port.backend_api, '') }}"
+    config_dirs: "{{ (item.name == 'aodh-api') | ternary('', '%s' % item.config_dirs ) }}"
+  with_items:
+    - "{{ aodh.services.aodh_api }}"
+    - "{{ aodh.services.aodh_evaluator }}"
+    - "{{ aodh.services.aodh_listener }}"
+    - "{{ aodh.services.aodh_notifier }}"
+  when: ursula_os == 'ubuntu'
+
+- block:
+  - name: install aodh services (rhel)
+    systemd_service:
+      name: "{{ item.name }}"
+      description: "{{ item.desc }}"
+      type: "{{ item.type }}"
+      user: "{{ item.user }}"
+      cmd: "{{ item.cmd }}"
+      args: "{{ (item.name == 'openstack-aodh-api') | ternary('--port %s' % endpoints.aodh.port.backend_api, '') }}"
+      restart: "{{ item.restart }}"
+    with_items:
+      - "{{ aodh.services.aodh_api }}"
+      - "{{ aodh.services.aodh_evaluator }}"
+      - "{{ aodh.services.aodh_listener }}"
+      - "{{ aodh.services.aodh_notifier }}"
+
+  - name: remove aodh-expirer service (rhel)
+    systemd_service:
+      name: "{{ item.name }}"
+      description: "{{ item.desc }}"
+      cmd: "{{ item.cmd }}"
+      state: absent
+    with_items:
+      - "{{ aodh.services.aodh_expirer }}"
+  when: ursula_os == 'rhel'
+
+- name: aodh config
+  template: src={{ item }} dest=/etc/aodh/
+            mode=0640
+            owner=root group=aodh
+  with_fileglob: ../templates/etc/aodh/*
+  notify:
+    - restart aodh services
+
+- name: copy aodh policy files to openstack-dashboard
+  template:
+    src: "etc/aodh/policy.json"
+    dest: "/etc/openstack-dashboard/aodh_policy.json"
+    owner: "root"
+    group: "{{ openstack_meta.apache[ursula_os].group }}"
+    mode: 0640
+
+
+- name: stop aodh services before db sync
+  service: name={{ item.name }} state=stopped
+  when: database_create.changed or force_sync|default('false')|bool
+  with_items:
+    - "{{ aodh.services.aodh_api }}"
+    - "{{ aodh.services.aodh_evaluator }}"
+    - "{{ aodh.services.aodh_listener }}"
+    - "{{ aodh.services.aodh_notifier }}"
+  tags: db-migrate
+
+- name: sync aodh database
+  command: aodh-dbsync
+  when: database_create.changed or force_sync|default('false')|bool
+  run_once: true
+  changed_when: true
+  notify:
+    - restart aodh services
+  # we want this to always be changed so that it can notify the service restart
+  tags: db-migrate
+
+- name: trigger restart on upgrades
+  debug:
+    msg: "Triggering service restart for upgrade"
+  changed_when: True
+  notify: restart aodh services
+  when: code_has_changed | default('False') | bool and
+        upgrade | default('False') | bool
+
+- meta: flush_handlers
+
+- name: start aodh services
+  service: name={{ item.name }} state=started enabled=True
+  with_items:
+    - "{{ aodh.services.aodh_api }}"
+    - "{{ aodh.services.aodh_evaluator }}"
+    - "{{ aodh.services.aodh_listener }}"
+    - "{{ aodh.services.aodh_notifier }}"
+
+- name: add aodh-expirer to cron.daily
+  file:
+    src="{{ (ansible_distribution == 'RedHat') | ternary('/usr/bin/', '/usr/local/bin/') }}aodh-expirer"
+    dest=/etc/cron.daily/aodh-expirer
+    state=link
+    owner=root
+    group=root
+    mode=0755
+
+- include: monitoring.yml
+  tags:
+    - monitoring
+    - common
+  when: monitoring.enabled|default('True')|bool
+
+- include: logging.yml
+  tags:
+    - logrotate
+    - logging
+  when: logging.enabled|default('True')|bool

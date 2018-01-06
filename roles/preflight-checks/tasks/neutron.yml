@@ -1,0 +1,6 @@
+---
+- include: network.yml param={{ item }}
+  with_items: "{{ neutron.networks }}"
+
+- include: subnet.yml param={{ item }}
+  with_items: "{{ neutron.subnets }}"

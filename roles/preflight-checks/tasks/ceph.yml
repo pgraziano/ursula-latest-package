@@ -1,0 +1,41 @@
+---
+# this yml is only executed when ceph is installed
+- name: fail when ceph health is not ok
+  shell: ceph health |grep -P '^(HEALTH_OK)|(HEALTH_WARN \d+ near full osd\(s\))$'
+  changed_when: false
+  delegate_to: "{{ groups['ceph_monitors'][0] }}"
+
+- name: fail when there is no CEPH in cinder type list
+  shell: . /root/stackrc; cinder type-list |grep CEPH
+  changed_when: false
+  delegate_to: "{{ groups['controller'][0] }}"
+
+# cinder.common_volume_name shouldn't be defined
+# in all.yml with value false
+- name: fail when cinder.common_volume_name is false
+  fail: msg="cinder.common_volume_name is not true"
+  when: not cinder.common_volume_name | default('True') | bool
+
+- name: fail when cinder configuration has rbd_volumes
+  shell: grep rbd_volumes /etc/cinder/cinder.conf
+  register: result
+  failed_when: result.rc == 0
+  changed_when: false
+  delegate_to: "{{ item }}"
+  with_items:
+    - "{{ groups['controller'] }}"
+
+- name: get number of existing osd nodes
+  shell: ceph osd tree |grep -i host |wc -l
+  changed_when: false
+  delegate_to: "{{ groups['ceph_monitors'][0] }}"
+  register: result_osdhosts
+
+# this flag will only be used to increase time-wait in ceph-update role
+# to tolerate misoperation of making scale-out and ceph update together
+- name: set scale-out flag
+  set_fact:
+    ceph_scale_out: true
+  delegate_to: "{{ groups['ceph_monitors'][0] }}"
+  delegate_facts: yes
+  when: result_osdhosts.stdout|int < groups['ceph_osds']|length

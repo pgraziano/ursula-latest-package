@@ -1,0 +1,12 @@
+---
+openstack_source:
+  git_mirror: "{{ git_mirror|default('https://github.com/openstack') }}"
+  pypi_mirror: "{{ pypi_mirror|default(None) }}"
+  project_rev: "{{ project_rev|default('master') }}"
+  virtualenv_base: /opt/bbc/openstack-2016.2-newton
+  git_update: no
+  rootwrap: "{{ rootwrap|default(False)|bool }}"
+  system_dependencies: "{{ system_dependencies|default({'ubuntu':[], 'rhel':[]}) }}"
+  python_dependencies: "{{ python_dependencies|default([]) }}"
+  python_post_dependencies: "{{ python_post_dependencies|default([]) }}"
+  pip_extra_args: ""
