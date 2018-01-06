@@ -1,16 +1,18 @@
 #!/bin/bash -x
 
-source $(dirname $0)/common
+echo "Temporarily disabling cleanup for troubleshooting"
 
-stack_exist=`openstack stack list | grep " ${testenv_heat_stack_name} " | wc -l | tr -d '[[:space:]]'`
-if [[ $stack_exist > 0 ]] ; then
-  echo "destroying heat stack: ${testenv_heat_stack_name}"
-  openstack stack delete --yes ${testenv_heat_stack_name}
-
-  # wait for some time to ensure all resources under heat stack are cleaned up
-  wait_seconds=30
-  echo "wait for ${wait_seconds} seconds to ensure all resources under heat stack are cleaned up"
-  sleep ${wait_seconds}
-else
-  echo "heat stack ${testenv_heat_stack_name} doesn't exist."
-fi
+##source $(dirname $0)/common
+##
+##stack_exist=`openstack stack list | grep " ${testenv_heat_stack_name} " | wc -l | tr -d '[[:space:]]'`
+##if [[ $stack_exist > 0 ]] ; then
+##  echo "destroying heat stack: ${testenv_heat_stack_name}"
+##  openstack stack delete --yes ${testenv_heat_stack_name}
+##
+##  # wait for some time to ensure all resources under heat stack are cleaned up
+##  wait_seconds=30
+##  echo "wait for ${wait_seconds} seconds to ensure all resources under heat stack are cleaned up"
+##  sleep ${wait_seconds}
+##else
+##  echo "heat stack ${testenv_heat_stack_name} doesn't exist."
+##fi
